@@ -402,14 +402,30 @@ internal sealed class MainWindow : Window
         _service.SetTomorrow(day, tomorrow);
 
         var markdown = ReportGenerator.Generate(_service, day);
+        // ファイルに書けなくても、貼り付けには使えるように先にコピーしておく。
+        var copied = CopyToClipboard(markdown);
+        var copyNote = copied ? "クリップボードにもコピーしました" : "クリップボードにはコピーできませんでした";
         try
         {
             var path = ReportWriter.Write(_config.ReportDirectoryPath, day, markdown);
-            Dialogs.Info(_app, "日報を出力しました", path);
+            Dialogs.Info(_app, "日報を出力しました", $"{path}\n{copyNote}");
         }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
         {
-            Dialogs.Error(_app, $"日報を保存できませんでした: {ex.Message}");
+            Dialogs.Error(_app, $"日報を保存できませんでした: {ex.Message}\n{copyNote}");
+        }
+    }
+
+    private bool CopyToClipboard(string text)
+    {
+        try
+        {
+            return _app.Clipboard is { IsSupported: true } clipboard && clipboard.TrySetClipboardData(text);
+        }
+        catch (Exception)
+        {
+            // クリップボードは他のアプリが掴んでいることがある。日報の出力は止めない。
+            return false;
         }
     }
 
