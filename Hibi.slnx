@@ -1,0 +1,9 @@
+<Solution>
+  <Folder Name="/src/">
+    <Project Path="src/Hibi.Core/Hibi.Core.csproj" />
+    <Project Path="src/Hibi/Hibi.csproj" />
+  </Folder>
+  <Folder Name="/tests/">
+    <Project Path="tests/Hibi.Core.Tests/Hibi.Core.Tests.csproj" />
+  </Folder>
+</Solution>

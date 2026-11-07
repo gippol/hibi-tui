@@ -1,0 +1,73 @@
+# hibi — 日々
+
+タスクを管理して、作業時間を記録し、その日の日報と月報を Markdown で出力する TUI アプリ。
+要件は [docs/requirements.md](docs/requirements.md)。
+
+## ビルドと配置
+
+```powershell
+# exe 1つ（自己完結・単一ファイル）を publish\hibi.exe に作る
+dotnet publish src/Hibi -c Release -o publish
+```
+
+`publish\hibi.exe` を PATH の通ったフォルダに置けば、どこからでも `hibi` で起動できる。
+.NET ランタイムを別に入れる必要はない。
+
+開発中は `dotnet run --project src/Hibi` でも動く。
+
+## 使い方
+
+| キー | 操作 |
+|---|---|
+| ↑ / ↓ | タスクを選ぶ（見出し行は飛ばす） |
+| `a` | タスクを追加 |
+| `Enter` | タイマーを開始/停止（別のタスクを開始すると前のタイマーは止まる） |
+| `d` | 完了にする / 完了を取り消す（取り消しは確認あり） |
+| `e` | タスクを編集 |
+| `t` | 作業記録を修正（テキストで編集） |
+| `x` | 削除（確認あり） |
+| `n` | 今日の所感を書く |
+| `r` | 明日の予定を選んで日報を出力 |
+| `m` | 月（`yyyy-MM`、既定は今月）を入れて月報を出力 |
+| `q` | 終了（タイマーは止まらない。次に起動したとき、長時間動いていたら確認する） |
+
+ダイアログの中の操作：
+- 1行の入力欄では `Enter` で OK
+- 複数行の欄（メモ、所感、作業記録）では `Ctrl+S` で保存
+- `Esc` でキャンセル
+- 削除と完了の取り消しの確認は、最初から「キャンセル」が選ばれている。実行するときは `←` か `Tab` で選んでから `Enter`
+
+### 作業記録の書き方（`t`）
+
+```
+2026-11-06 10:00 - 12:30              終了が開始より前の時刻なら翌日扱い
+2026-11-06 23:00 - 2026-11-07 01:00
+2026-11-06 13:00 -                    計測中
+```
+
+`#` で始まる行と空行は無視する。
+
+## ファイルの場所
+
+| ファイル | 場所 |
+|---|---|
+| 設定 | `%APPDATA%\hibi\config.json`（環境変数 `HIBI_CONFIG` で差し替えられる） |
+| データ | `%APPDATA%\hibi\tasks.json` |
+| バックアップ | `%APPDATA%\hibi\backup\`（起動するたびに取る。7世代を残す） |
+| 日報 | `%USERPROFILE%\Documents\hibi\reports\YYYY-MM-DD.md` |
+| 月報 | `%USERPROFILE%\Documents\hibi\reports\YYYY-MM.md`（日報と同じフォルダ） |
+
+設定の項目は `dataDirectory` / `reportDirectory` / `dayBoundary`（既定 `04:00`）/ `forgottenTimerWarningHours`（既定 `8`）。
+
+## 開発
+
+```powershell
+dotnet test                               # Core のテスト
+publish\hibi.exe --startup-check          # 最初の描画まで行って終了し、起動時間を表示する
+```
+
+| プロジェクト | 中身 |
+|---|---|
+| `src/Hibi.Core` | モデル・業務日・タイマー・日報の生成・保存（UI に依存しない） |
+| `src/Hibi` | Terminal.Gui v2 の TUI |
+| `tests/Hibi.Core.Tests` | xUnit のテスト |
