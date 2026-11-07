@@ -64,7 +64,7 @@ public class WeeklyReportTests
 
             ## 進行中
             ### backend
-            - API修正 — 2h00m（累計 3h00m）
+            - API修正 — 2h00m（累計 2h00m）
 
             ## 日別
             - 11-02（月） — 0h40m

@@ -63,7 +63,7 @@ public class MonthlyReportTests
 
             ## 進行中
             ### backend
-            - API修正 — 2h45m（累計 3h45m）
+            - API修正 — 2h45m（累計 2h45m）
             ### その他
             - 問い合わせ対応 — 0h05m（累計 0h05m）
 

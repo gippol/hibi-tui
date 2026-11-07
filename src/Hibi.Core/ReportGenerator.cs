@@ -110,10 +110,12 @@ public static class ReportGenerator
             sb.Append($"- {key ?? NoProject} — {DurationFormat.Short(byProject[key ?? ""])}\n");
 
         sb.Append("\n## 完了\n");
-        AppendGrouped(sb, completed, t => service.DurationIn(t, from, to), service.TotalDuration);
+        // 累計は期間の末日まで（作り直しても、あとの作業で数字が変わらない）
+        TimeSpan UpToEnd(TaskItem t) => service.DurationIn(t, DateOnly.MinValue, to);
+        AppendGrouped(sb, completed, t => service.DurationIn(t, from, to), UpToEnd);
 
         sb.Append("\n## 進行中\n");
-        AppendGrouped(sb, inProgress, t => service.DurationIn(t, from, to), service.TotalDuration);
+        AppendGrouped(sb, inProgress, t => service.DurationIn(t, from, to), UpToEnd);
 
         sb.Append("\n## 日別\n");
         if (byDay.Count == 0) sb.Append(None).Append('\n');
