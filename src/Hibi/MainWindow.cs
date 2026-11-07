@@ -80,7 +80,7 @@ internal sealed class MainWindow : Window
             Width = Dim.Fill(),
             Height = 2,
             Text = "a:追加  Enter:開始/停止  d:完了/取消  e:編集  t:時間修正  x:削除  /:絞り込み  Shift+↑↓:並べ替え\n" +
-                   "n:所感  r:日報出力  N/R:過去の日を選んで  w:週報出力  m:月報出力  h:保留を開く/たたむ  q:終了",
+                   "n:所感  r:日報出力  N/R:過去の日を選んで  w:週報出力  m:月報出力  p:保留にする/戻す  h:保留を開く/たたむ  q:終了",
         };
 
         Add(listFrame, detailFrame, footer);
@@ -142,22 +142,23 @@ internal sealed class MainWindow : Window
             foreach (var t in shownPlanned) AddTask(t, OpenMark(t));
         }
 
-        // 長く触っていないものは [保留] に分ける。ふだんはたたんでおき、件数だけ出す
+        // 手で保留にしたもの・長く触っていないものは [保留] に分ける。ふだんはたたんでおき、件数だけ出す
         var open = _service.OpenTasks().Where(t => !_plannedIds.Contains(t.Id) && IsShown(t)).ToList();
-        var stale = open.Where(IsStale).ToList();
+        var held = open.Where(IsHeld).ToList();
 
         AddHeader("[未完了]");
-        foreach (var t in open.Where(t => !IsStale(t)))
+        foreach (var t in open.Where(t => !IsHeld(t)))
             AddTask(t, OpenMark(t));
 
-        if (stale.Count > 0)
+        if (held.Count > 0)
         {
             // 絞り込み中は探しているものが隠れないように開いて出す
             var expanded = _showStale || _filter is not null;
-            AddHeader($"[保留 {stale.Count}件（{_config.StaleTaskDays}日以上触っていない）]" +
+            var why = _config.StaleTaskDays > 0 ? $"手で保留・{_config.StaleTaskDays}日以上触っていない" : "手で保留";
+            AddHeader($"[保留 {held.Count}件（{why}）]" +
                       (_filter is not null ? "" : expanded ? "  h: たたむ" : "  h: 開く"));
             if (expanded)
-                foreach (var t in stale) AddTask(t, OpenMark(t));
+                foreach (var t in held) AddTask(t, OpenMark(t));
         }
 
         AddHeader("[今日の完了]");
@@ -178,7 +179,7 @@ internal sealed class MainWindow : Window
 
     private bool IsShown(TaskItem t) => TaskFilter.Matches(t, _filter);
 
-    private bool IsStale(TaskItem t) => _service.IsStale(t, _config.StaleTaskDays);
+    private bool IsHeld(TaskItem t) => _service.IsOnHold(t, _config.StaleTaskDays);
 
     private static string OpenMark(TaskItem t) => t.IsRunning ? "▶" : t.WorkLogs.Count > 0 ? "・" : " ";
 
@@ -188,10 +189,16 @@ internal sealed class MainWindow : Window
         _rowTasks.Add(null);
     }
 
+    /// <summary>1行: 印、優先度（! 高 / ↓ 低）、タイトル、#プロジェクト、〆期限。</summary>
     private void AddTask(TaskItem t, string mark)
     {
+        var priority = t.Priority switch { TaskPriority.High => "!", TaskPriority.Low => "↓", _ => "" };
         var project = t.Project is { } p ? $"  #{p}" : "";
-        _rows.Add($" {mark} {t.Title}{project}");
+        var due = t.IsCompleted || t.Due is not { } d ? ""
+            : _service.IsOverdue(t) ? $"  〆{d:MM-dd} 期限切れ"
+            : d == _shownDay ? "  〆今日"
+            : $"  〆{d:MM-dd}";
+        _rows.Add($" {mark} {priority}{t.Title}{project}{due}");
         _rowTasks.Add(t);
     }
 
@@ -213,15 +220,20 @@ internal sealed class MainWindow : Window
         {
             TaskState.Running => "作業中",
             TaskState.Completed => $"完了（{t.CompletedAt:MM-dd HH:mm}）",
-            _ when IsStale(t) => "保留",
+            _ when t.OnHold => "保留（手で保留）",
+            _ when IsHeld(t) => "保留（長く触っていない）",
             _ => t.WorkLogs.Count > 0 ? "未完了" : "未着手",
         };
         var last = _service.LastActivityDay(t);
         var ago = _shownDay.DayNumber - last.DayNumber;
+        var due = t.Due is { } d
+            ? $"{BusinessDayCalendar.Key(d)}（{BusinessDayCalendar.JaWeekday(d)}）{(_service.IsOverdue(t) ? " 期限切れ" : "")}"
+            : "-";
         _detail.Text =
             $"タイトル: {t.Title}\n" +
             $"プロジェクト: {t.Project ?? "-"}\n" +
             $"状態: {state}\n" +
+            $"優先度: {Dialogs.PriorityLabel(t.Priority)}  期限: {due}\n" +
             $"最後に触った日: {BusinessDayCalendar.Key(last)}（{(ago <= 0 ? "今日" : $"{ago}日前")}）\n" +
             $"今日: {DurationFormat.Short(_service.DurationOn(t, _shownDay))} / 累計: {DurationFormat.Short(_service.TotalDuration(t))}\n" +
             $"\nメモ:\n{t.Memo ?? "-"}";
@@ -274,6 +286,7 @@ internal sealed class MainWindow : Window
             : key == Key.M ? OutputMonthlyReport
             : key == Key.W ? OutputWeeklyReport
             : key == Key.H ? () => _showStale = !_showStale
+            : key == Key.P ? ToggleHold
             : key == Key.Q ? () => _app.RequestStop()
             : null;
         if (action is null) return false;
@@ -298,8 +311,8 @@ internal sealed class MainWindow : Window
 
     private void AddTask()
     {
-        if (Dialogs.EditTask(_app, "タスクを追加", null, null, null, _service.Projects()) is not { } r) return;
-        var t = _service.Add(r.Title, r.Project, r.Memo);
+        if (Dialogs.EditTask(_app, "タスクを追加", null, _service.Projects()) is not { } r) return;
+        var t = _service.Add(r.Title, r.Project, r.Memo, r.Due, r.Priority);
         Refresh();
         if (_rowTasks.IndexOf(t) is var i and >= 0) _list.Value = i; // 絞り込みで見えないときは選択を動かさない
     }
@@ -319,8 +332,17 @@ internal sealed class MainWindow : Window
     private void MoveSelected(int delta)
     {
         if (Selected is not { } t || t.IsCompleted || _plannedIds.Contains(t.Id)) return;
-        var stale = IsStale(t);
-        _service.MoveOpen(t.Id, delta, o => !_plannedIds.Contains(o.Id) && IsShown(o) && IsStale(o) == stale);
+        var held = IsHeld(t);
+        _service.MoveOpen(t.Id, delta, o => !_plannedIds.Contains(o.Id) && IsShown(o) && IsHeld(o) == held);
+    }
+
+    /// <summary>保留（手で・自動どちらも）なら戻し、そうでなければ手で保留にする。</summary>
+    private void ToggleHold()
+    {
+        if (Selected is not { } t || t.IsCompleted) return;
+        if (t.IsRunning)
+            throw new InvalidOperationException("計測中のタスクは保留にできません。先にタイマーを止めてください。");
+        _service.SetOnHold(t.Id, !IsHeld(t));
     }
 
     private void ToggleTimer()
@@ -343,8 +365,8 @@ internal sealed class MainWindow : Window
     private void EditTask()
     {
         if (Selected is not { } t) return;
-        if (Dialogs.EditTask(_app, "タスクを編集", t.Title, t.Project, t.Memo, _service.Projects()) is { } r)
-            _service.Edit(t.Id, r.Title, r.Project, r.Memo);
+        if (Dialogs.EditTask(_app, "タスクを編集", new TaskInput(t.Title, t.Project, t.Memo, t.Due, t.Priority), _service.Projects()) is { } r)
+            _service.Edit(t.Id, r.Title, r.Project, r.Memo, r.Due, r.Priority);
     }
 
     private void EditWorkLogs()

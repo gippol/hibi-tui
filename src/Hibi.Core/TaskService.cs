@@ -51,10 +51,10 @@ public sealed class TaskService(TaskData data, BusinessDayCalendar calendar, Tim
 
     public TimeSpan TotalDuration(TaskItem task) => Sum(task.WorkLogs);
 
-    /// <summary>最後に触った業務日: 作成した日と、作業記録の開始・終了のうちいちばん新しい日。</summary>
+    /// <summary>最後に触った業務日: 作成・手での変更（UpdatedAt）・作業記録の開始と終了のうち、いちばん新しい日。</summary>
     public DateOnly LastActivityDay(TaskItem task)
     {
-        var last = task.CreatedAt;
+        var last = task.UpdatedAt is { } u && u > task.CreatedAt ? u : task.CreatedAt;
         foreach (var l in task.WorkLogs)
         {
             var t = l.End ?? Now;
@@ -71,6 +71,13 @@ public sealed class TaskService(TaskData data, BusinessDayCalendar calendar, Tim
     public bool IsStale(TaskItem task, int days) =>
         days > 0 && !task.IsCompleted && !task.IsRunning
         && Today.DayNumber - LastActivityDay(task).DayNumber >= days;
+
+    /// <summary>保留として扱うか: 手で保留にしたもの、または日数による自動の保留（<see cref="IsStale"/>）。</summary>
+    public bool IsOnHold(TaskItem task, int staleDays) =>
+        !task.IsCompleted && !task.IsRunning && (task.OnHold || IsStale(task, staleDays));
+
+    /// <summary>期限切れ: 未完了で、期限が今の業務日より前。</summary>
+    public bool IsOverdue(TaskItem task) => !task.IsCompleted && task.Due is { } d && d < Today;
 
     public bool WorkedOn(TaskItem task, DateOnly day) =>
         task.WorkLogs.Any(l => Calendar.DayOf(l.Start) == day);
@@ -110,13 +117,16 @@ public sealed class TaskService(TaskData data, BusinessDayCalendar calendar, Tim
 
     // ---------- タスク ----------
 
-    public TaskItem Add(string title, string? project = null, string? memo = null)
+    public TaskItem Add(string title, string? project = null, string? memo = null,
+        DateOnly? due = null, TaskPriority priority = TaskPriority.Normal)
     {
         var task = new TaskItem
         {
             Title = RequireTitle(title),
             Project = Normalize(project),
             Memo = Normalize(memo),
+            Due = due,
+            Priority = priority,
             Order = Data.Tasks.Count == 0 ? 0 : Data.Tasks.Max(t => t.Order) + 1,
             CreatedAt = Now,
         };
@@ -125,12 +135,30 @@ public sealed class TaskService(TaskData data, BusinessDayCalendar calendar, Tim
         return task;
     }
 
-    public void Edit(Guid id, string title, string? project, string? memo)
+    /// <summary>タスクの中身を置き換える。期限と優先度も渡したもので置き換える（null の期限は「期限なし」）。</summary>
+    public void Edit(Guid id, string title, string? project, string? memo, DateOnly? due, TaskPriority priority)
     {
         var task = Get(id);
         task.Title = RequireTitle(title);
         task.Project = Normalize(project);
         task.Memo = Normalize(memo);
+        task.Due = due;
+        task.Priority = priority;
+        task.UpdatedAt = Now;
+        OnChanged();
+    }
+
+    /// <summary>
+    /// 手で保留にする（true）・保留から戻す（false）。戻すときは「触った」ことにするので、
+    /// 日数による自動の保留からも外れる。完了したタスクには使えない。
+    /// </summary>
+    public void SetOnHold(Guid id, bool onHold)
+    {
+        var task = Get(id);
+        if (task.IsCompleted)
+            throw new InvalidOperationException("完了したタスクは保留にできません。");
+        task.OnHold = onHold;
+        task.UpdatedAt = Now;
         OnChanged();
     }
 
@@ -184,6 +212,7 @@ public sealed class TaskService(TaskData data, BusinessDayCalendar calendar, Tim
         var task = Get(id);
         if (!task.IsCompleted) return;
         task.CompletedAt = null;
+        task.UpdatedAt = Now;
         OnChanged();
     }
 
@@ -197,6 +226,7 @@ public sealed class TaskService(TaskData data, BusinessDayCalendar calendar, Tim
             throw new InvalidOperationException("完了したタスクのタイマーは開始できません。");
         if (task.IsRunning) return;
         StopCore();
+        task.OnHold = false; // 作業を始めたら保留ではない
         task.WorkLogs.Add(new WorkLog { Start = Now });
         OnChanged();
     }
@@ -271,7 +301,7 @@ public sealed class TaskService(TaskData data, BusinessDayCalendar calendar, Tim
 
     /// <summary>
     /// 今日の予定: 今日より前で、明日の予定を選んだいちばん新しい業務日の選択（土日などをはさんでもよい）。
-    /// 完了したもの・消したものは除く。並びは選んだときの順。
+    /// 完了したもの・消したもの・手で保留にしたものは除く。並びは選んだときの順。
     /// </summary>
     public IReadOnlyList<TaskItem> PlannedToday()
     {
@@ -282,7 +312,7 @@ public sealed class TaskService(TaskData data, BusinessDayCalendar calendar, Tim
             .OrderByDescending(kv => kv.Key, StringComparer.Ordinal)
             .Select(kv => kv.Value.TomorrowTaskIds)
             .FirstOrDefault() ?? [];
-        return ids.Select(Find).OfType<TaskItem>().Where(t => !t.IsCompleted).ToList();
+        return ids.Select(Find).OfType<TaskItem>().Where(t => !t.IsCompleted && !t.OnHold).ToList();
     }
 
     public void SetNote(DateOnly day, string? note)

@@ -5,8 +5,11 @@ namespace Hibi.Core;
 /// <summary>tasks.json のルート。</summary>
 public sealed class TaskData
 {
-    /// <summary>2: TaskItem.Order を追加。</summary>
-    public const int CurrentSchemaVersion = 2;
+    /// <summary>
+    /// 2: TaskItem.Order を追加。
+    /// 3: TaskItem.UpdatedAt / OnHold / Due / Priority を追加（どれも省略時は既定値）。
+    /// </summary>
+    public const int CurrentSchemaVersion = 3;
 
     public int SchemaVersion { get; set; } = CurrentSchemaVersion;
     public List<TaskItem> Tasks { get; set; } = [];
@@ -26,6 +29,18 @@ public sealed class TaskItem
     public int Order { get; set; }
 
     public DateTimeOffset CreatedAt { get; set; }
+
+    /// <summary>最後に手で変えた日時（編集・保留の切り替え・完了の取り消し）。null なら作ってから変えていない。</summary>
+    public DateTimeOffset? UpdatedAt { get; set; }
+
+    /// <summary>手で保留にしたか。日数による自動の保留とは別。</summary>
+    public bool OnHold { get; set; }
+
+    /// <summary>期限（業務日）。null なら期限なし。</summary>
+    public DateOnly? Due { get; set; }
+
+    public TaskPriority Priority { get; set; } = TaskPriority.Normal;
+
     public DateTimeOffset? CompletedAt { get; set; }
     public List<WorkLog> WorkLogs { get; set; } = [];
 
@@ -59,6 +74,15 @@ public sealed class DayRecord
 {
     public string? Note { get; set; }
     public List<Guid> TomorrowTaskIds { get; set; } = [];
+}
+
+/// <summary>優先度。JSON には小文字の名前で書く。</summary>
+[JsonConverter(typeof(JsonStringEnumConverter<TaskPriority>))]
+public enum TaskPriority
+{
+    [JsonStringEnumMemberName("high")] High,
+    [JsonStringEnumMemberName("normal")] Normal,
+    [JsonStringEnumMemberName("low")] Low,
 }
 
 public enum TaskState
