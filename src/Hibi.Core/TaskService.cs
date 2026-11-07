@@ -217,6 +217,22 @@ public sealed class TaskService(TaskData data, BusinessDayCalendar calendar, Tim
     public DayRecord? GetDay(DateOnly day) =>
         Data.Days.GetValueOrDefault(BusinessDayCalendar.Key(day));
 
+    /// <summary>
+    /// 今日の予定: 今日より前で、明日の予定を選んだいちばん新しい業務日の選択（土日などをはさんでもよい）。
+    /// 完了したもの・消したものは除く。並びは選んだときの順。
+    /// </summary>
+    public IReadOnlyList<TaskItem> PlannedToday()
+    {
+        var today = BusinessDayCalendar.Key(Today);
+        // キーは yyyy-MM-dd なので文字列の順 = 日付の順
+        var ids = Data.Days
+            .Where(kv => string.CompareOrdinal(kv.Key, today) < 0 && kv.Value.TomorrowTaskIds.Count > 0)
+            .OrderByDescending(kv => kv.Key, StringComparer.Ordinal)
+            .Select(kv => kv.Value.TomorrowTaskIds)
+            .FirstOrDefault() ?? [];
+        return ids.Select(Find).OfType<TaskItem>().Where(t => !t.IsCompleted).ToList();
+    }
+
     public void SetNote(DateOnly day, string? note)
     {
         GetOrCreateDay(day).Note = Normalize(note);

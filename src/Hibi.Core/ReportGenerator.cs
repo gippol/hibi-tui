@@ -14,8 +14,9 @@ public static class ReportGenerator
     public static string Generate(TaskService service, DateOnly day)
     {
         var completed = service.CompletedOn(day);
+        // その日の時点で完了していないもの（過去の日報なら、あとで完了したものも進行中）
         var inProgress = service.Data.Tasks
-            .Where(t => !t.IsCompleted && service.WorkedOn(t, day))
+            .Where(t => !(t.CompletedAt is { } c && service.Calendar.DayOf(c) <= day) && service.WorkedOn(t, day))
             .OrderBy(t => t.WorkLogs.Where(l => service.Calendar.DayOf(l.Start) == day).Min(l => l.Start))
             .ToList();
 
@@ -31,11 +32,14 @@ public static class ReportGenerator
         sb.Append($"# 日報 {BusinessDayCalendar.Key(day)}（{BusinessDayCalendar.JaWeekday(day)}）\n\n");
         sb.Append($"稼働合計: {DurationFormat.Short(total)}\n\n");
 
+        // 累計はその日まで（今日の日報なら全期間と同じ）
+        TimeSpan UpToDay(TaskItem t) => service.DurationIn(t, DateOnly.MinValue, day);
+
         sb.Append("## 完了\n");
-        AppendGrouped(sb, service, completed, t => service.DurationOn(t, day));
+        AppendGrouped(sb, completed, t => service.DurationOn(t, day), UpToDay);
 
         sb.Append("\n## 進行中\n");
-        AppendGrouped(sb, service, inProgress, t => service.DurationOn(t, day));
+        AppendGrouped(sb, inProgress, t => service.DurationOn(t, day), UpToDay);
 
         sb.Append("\n## 明日の予定\n");
         if (tomorrow.Count == 0) sb.Append(None).Append('\n');
@@ -96,10 +100,10 @@ public static class ReportGenerator
             sb.Append($"- {key ?? NoProject} — {DurationFormat.Short(byProject[key ?? ""])}\n");
 
         sb.Append("\n## 完了\n");
-        AppendGrouped(sb, service, completed, t => service.DurationIn(t, from, to));
+        AppendGrouped(sb, completed, t => service.DurationIn(t, from, to), service.TotalDuration);
 
         sb.Append("\n## 進行中\n");
-        AppendGrouped(sb, service, inProgress, t => service.DurationIn(t, from, to));
+        AppendGrouped(sb, inProgress, t => service.DurationIn(t, from, to), service.TotalDuration);
 
         sb.Append("\n## 日別\n");
         if (byDay.Count == 0) sb.Append(None).Append('\n');
@@ -130,8 +134,8 @@ public static class ReportGenerator
     private static IEnumerable<string?> OrderProjects(IEnumerable<string?> projects) =>
         projects.OrderBy(p => p is null ? 1 : 0).ThenBy(p => p, StringComparer.Ordinal);
 
-    private static void AppendGrouped(StringBuilder sb, TaskService service, IReadOnlyList<TaskItem> tasks,
-        Func<TaskItem, TimeSpan> duration)
+    private static void AppendGrouped(StringBuilder sb, IReadOnlyList<TaskItem> tasks,
+        Func<TaskItem, TimeSpan> duration, Func<TaskItem, TimeSpan> cumulative)
     {
         if (tasks.Count == 0)
         {
@@ -145,7 +149,7 @@ public static class ReportGenerator
         {
             sb.Append($"### {project ?? NoProject}\n");
             foreach (var t in groups[project])
-                sb.Append($"- {t.Title} — {DurationFormat.Short(duration(t))}（累計 {DurationFormat.Short(service.TotalDuration(t))}）\n");
+                sb.Append($"- {t.Title} — {DurationFormat.Short(duration(t))}（累計 {DurationFormat.Short(cumulative(t))}）\n");
         }
     }
 }

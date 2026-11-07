@@ -251,6 +251,30 @@ internal static class Dialogs
         }
     }
 
+    // ---------- 業務日の入力（過去の所感・日報） ----------
+
+    /// <summary>業務日（yyyy-MM-dd）を入れてもらう。<paramref name="max"/> より後は受け付けない。キャンセルなら null。</summary>
+    public static DateOnly? AskDay(IApplication app, string title, DateOnly initial, DateOnly max)
+    {
+        var text = BusinessDayCalendar.Key(initial);
+        while (true)
+        {
+            using var d = new Dialog { Title = title, Width = 50, Height = 10 };
+            var field = new TextField { X = 1, Y = 1, Width = Dim.Fill(1), Text = text };
+            d.Add(new Label { X = 1, Y = 0, Text = "対象の業務日（yyyy-MM-dd）" }, field);
+            field.SetFocus();
+            if (Show(app, d, [Ok, Cancel], field) != 0) return null;
+
+            text = field.Text;
+            if (!DateOnly.TryParseExact(text.Trim(), "yyyy-M-d", CultureInfo.InvariantCulture, DateTimeStyles.None, out var day))
+                Error(app, "yyyy-MM-dd の形で入力してください（例: 2026-11-06）。");
+            else if (day > max)
+                Error(app, "未来の日付は指定できません。");
+            else
+                return day;
+        }
+    }
+
     // ---------- 明日の予定（F-R-02〜04） ----------
 
     /// <summary>明日の予定を選ぶ。キャンセルなら null。</summary>
@@ -260,7 +284,12 @@ internal static class Dialogs
         var chosen = new HashSet<Guid>(service.GetDay(day)?.TomorrowTaskIds ?? []);
         var rows = new ObservableCollection<string>();
 
-        using var d = new Dialog { Title = "日報を出力: 明日の予定を選ぶ", Width = Dim.Percent(80), Height = Dim.Percent(80) };
+        using var d = new Dialog
+        {
+            Title = $"日報を出力（{BusinessDayCalendar.Key(day)}）: 明日の予定を選ぶ",
+            Width = Dim.Percent(80),
+            Height = Dim.Percent(80),
+        };
         var list = new ShortcutListView
         {
             X = 0,

@@ -70,7 +70,7 @@ internal sealed class MainWindow : Window
             Width = Dim.Fill(),
             Height = 2,
             Text = "a:追加  Enter:開始/停止  d:完了/取消  e:編集  t:時間修正  x:削除\n" +
-                   "n:所感  r:日報出力  m:月報出力  q:終了",
+                   "n:所感  r:日報出力  N/R:過去の日を選んで  m:月報出力  q:終了",
         };
 
         Add(listFrame, detailFrame, footer);
@@ -122,9 +122,18 @@ internal sealed class MainWindow : Window
         _rows.Clear();
         _rowTasks.Clear();
 
+        // 前の業務日の日報で選んだ「明日の予定」を上に出す。下の未完了には重ねて出さない
+        var planned = _service.PlannedToday();
+        if (planned.Count > 0)
+        {
+            AddHeader("[今日の予定]");
+            foreach (var t in planned) AddTask(t, OpenMark(t));
+        }
+
+        var plannedIds = planned.Select(t => t.Id).ToHashSet();
         AddHeader("[未完了]");
-        foreach (var t in _service.OpenTasks())
-            AddTask(t, t.IsRunning ? "▶" : t.WorkLogs.Count > 0 ? "・" : " ");
+        foreach (var t in _service.OpenTasks().Where(t => !plannedIds.Contains(t.Id)))
+            AddTask(t, OpenMark(t));
 
         AddHeader("[今日の完了]");
         foreach (var t in _service.CompletedOn(_shownDay))
@@ -139,6 +148,8 @@ internal sealed class MainWindow : Window
         UpdateTitle();
         UpdateDetail();
     }
+
+    private static string OpenMark(TaskItem t) => t.IsRunning ? "▶" : t.WorkLogs.Count > 0 ? "・" : " ";
 
     private void AddHeader(string text)
     {
@@ -205,8 +216,10 @@ internal sealed class MainWindow : Window
             : key == Key.E ? EditTask
             : key == Key.T ? EditWorkLogs
             : key == Key.X ? DeleteTask
-            : key == Key.N ? EditNote
-            : key == Key.R ? OutputReport
+            : key == Key.N ? () => EditNote(_service.Today)
+            : key == Key.N.WithShift ? () => WithPastDay("所感を書く", EditNote)
+            : key == Key.R ? () => OutputReport(_service.Today)
+            : key == Key.R.WithShift ? () => WithPastDay("日報を出力", OutputReport)
             : key == Key.M ? OutputMonthlyReport
             : key == Key.Q ? () => _app.RequestStop()
             : null;
@@ -275,16 +288,21 @@ internal sealed class MainWindow : Window
             _service.Delete(t.Id);
     }
 
-    private void EditNote()
+    /// <summary>業務日を選んでから実行する。最初は前の業務日が入っている。</summary>
+    private void WithPastDay(string title, Action<DateOnly> action)
     {
-        var day = _service.Today;
+        var today = _service.Today;
+        if (Dialogs.AskDay(_app, title, today.AddDays(-1), today) is { } day) action(day);
+    }
+
+    private void EditNote(DateOnly day)
+    {
         if (Dialogs.EditText(_app, $"所感 {BusinessDayCalendar.Key(day)}", _service.GetDay(day)?.Note) is { } note)
             _service.SetNote(day, note);
     }
 
-    private void OutputReport()
+    private void OutputReport(DateOnly day)
     {
-        var day = _service.Today;
         var tomorrow = Dialogs.ChooseTomorrow(_app, _service, day);
         if (tomorrow is null) return;
         _service.SetTomorrow(day, tomorrow);
