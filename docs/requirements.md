@@ -219,6 +219,17 @@
 
 - 載せる内容・並べ方・時間の表示は月報（4.6.1）と同じ。見出しは `# 週報 2026-W45`
 
+### 4.8 保留（v1 のあとに追加）
+
+| ID | 要件 |
+|---|---|
+| F-H-01 | 最後に触ってから `staleTaskDays`（既定 14）業務日以上たった未完了タスクを「保留」として、一覧の `[保留 N件]` にまとめる |
+| F-H-02 | 「最後に触った日」は、作成した日時と作業記録の開始・終了のうち、いちばん新しいものの業務日 |
+| F-H-03 | 計測中のタスクと `[今日の予定]` のタスクは保留にしない。完了したタスクは対象外 |
+| F-H-04 | 保留はデータに保存せず、表示するたびに決める。作業すれば自動で `[未完了]` に戻る |
+| F-H-05 | `[保留]` はふだんたたんでおき、`h` で開く・たたむ。絞り込み中は開いて出す |
+| F-H-06 | 詳細に「最後に触った日（N日前）」を出す |
+
 ---
 
 ## 5. 画面とキー操作
@@ -329,7 +340,8 @@
   "dataDirectory": "%APPDATA%\\hibi",
   "reportDirectory": "%USERPROFILE%\\Documents\\hibi\\reports",
   "dayBoundary": "04:00",
-  "forgottenTimerWarningHours": 8
+  "forgottenTimerWarningHours": 8,
+  "staleTaskDays": 14
 }
 ```
 
@@ -339,6 +351,7 @@
 | `reportDirectory` | 日報を出力するフォルダ | `%USERPROFILE%\Documents\hibi\reports` |
 | `dayBoundary` | 業務日の切り替わり時刻 | `04:00` |
 | `forgottenTimerWarningHours` | 止め忘れを警告するまでの時間 | `8` |
+| `staleTaskDays` | この業務日数のあいだ触っていない未完了タスクを保留にする（4.8）。`0` なら使わない | `14` |
 
 - config.json がなければ、既定値で作る
 - パスの中の環境変数（`%APPDATA%` など）は展開して使う

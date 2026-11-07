@@ -32,6 +32,9 @@ internal sealed class MainWindow : Window
     /// <summary>今 [今日の予定] に出しているタスク。並べ替えを区切りの中に閉じるのに使う。</summary>
     private HashSet<Guid> _plannedIds = [];
 
+    /// <summary>[保留] を開いて出すか。</summary>
+    private bool _showStale;
+
     public MainWindow(IApplication app, TaskService service, TaskStore store, AppConfig config)
     {
         _app = app;
@@ -77,7 +80,7 @@ internal sealed class MainWindow : Window
             Width = Dim.Fill(),
             Height = 2,
             Text = "a:追加  Enter:開始/停止  d:完了/取消  e:編集  t:時間修正  x:削除  /:絞り込み  Shift+↑↓:並べ替え\n" +
-                   "n:所感  r:日報出力  N/R:過去の日を選んで  w:週報出力  m:月報出力  q:終了",
+                   "n:所感  r:日報出力  N/R:過去の日を選んで  w:週報出力  m:月報出力  h:保留を開く/たたむ  q:終了",
         };
 
         Add(listFrame, detailFrame, footer);
@@ -139,9 +142,23 @@ internal sealed class MainWindow : Window
             foreach (var t in shownPlanned) AddTask(t, OpenMark(t));
         }
 
+        // 長く触っていないものは [保留] に分ける。ふだんはたたんでおき、件数だけ出す
+        var open = _service.OpenTasks().Where(t => !_plannedIds.Contains(t.Id) && IsShown(t)).ToList();
+        var stale = open.Where(IsStale).ToList();
+
         AddHeader("[未完了]");
-        foreach (var t in _service.OpenTasks().Where(t => !_plannedIds.Contains(t.Id) && IsShown(t)))
+        foreach (var t in open.Where(t => !IsStale(t)))
             AddTask(t, OpenMark(t));
+
+        if (stale.Count > 0)
+        {
+            // 絞り込み中は探しているものが隠れないように開いて出す
+            var expanded = _showStale || _filter is not null;
+            AddHeader($"[保留 {stale.Count}件（{_config.StaleTaskDays}日以上触っていない）]" +
+                      (_filter is not null ? "" : expanded ? "  h: たたむ" : "  h: 開く"));
+            if (expanded)
+                foreach (var t in stale) AddTask(t, OpenMark(t));
+        }
 
         AddHeader("[今日の完了]");
         foreach (var t in _service.CompletedOn(_shownDay).Where(IsShown))
@@ -160,6 +177,8 @@ internal sealed class MainWindow : Window
     }
 
     private bool IsShown(TaskItem t) => TaskFilter.Matches(t, _filter);
+
+    private bool IsStale(TaskItem t) => _service.IsStale(t, _config.StaleTaskDays);
 
     private static string OpenMark(TaskItem t) => t.IsRunning ? "▶" : t.WorkLogs.Count > 0 ? "・" : " ";
 
@@ -194,12 +213,16 @@ internal sealed class MainWindow : Window
         {
             TaskState.Running => "作業中",
             TaskState.Completed => $"完了（{t.CompletedAt:MM-dd HH:mm}）",
+            _ when IsStale(t) => "保留",
             _ => t.WorkLogs.Count > 0 ? "未完了" : "未着手",
         };
+        var last = _service.LastActivityDay(t);
+        var ago = _shownDay.DayNumber - last.DayNumber;
         _detail.Text =
             $"タイトル: {t.Title}\n" +
             $"プロジェクト: {t.Project ?? "-"}\n" +
             $"状態: {state}\n" +
+            $"最後に触った日: {BusinessDayCalendar.Key(last)}（{(ago <= 0 ? "今日" : $"{ago}日前")}）\n" +
             $"今日: {DurationFormat.Short(_service.DurationOn(t, _shownDay))} / 累計: {DurationFormat.Short(_service.TotalDuration(t))}\n" +
             $"\nメモ:\n{t.Memo ?? "-"}";
     }
@@ -250,6 +273,7 @@ internal sealed class MainWindow : Window
             : key == Key.R.WithShift ? () => WithPastDay("日報を出力", OutputReport)
             : key == Key.M ? OutputMonthlyReport
             : key == Key.W ? OutputWeeklyReport
+            : key == Key.H ? () => _showStale = !_showStale
             : key == Key.Q ? () => _app.RequestStop()
             : null;
         if (action is null) return false;
@@ -289,13 +313,14 @@ internal sealed class MainWindow : Window
     }
 
     /// <summary>
-    /// 選んでいるタスクを、同じ区切り（[今日の予定] は除く）の中で見えている隣と入れ替える。
+    /// 選んでいるタスクを、同じ区切り（[未完了] か [保留]）の中で見えている隣と入れ替える。
     /// [今日の予定] の並びは日報で選んだ順なので、ここでは動かさない。
     /// </summary>
     private void MoveSelected(int delta)
     {
         if (Selected is not { } t || t.IsCompleted || _plannedIds.Contains(t.Id)) return;
-        _service.MoveOpen(t.Id, delta, o => !_plannedIds.Contains(o.Id) && IsShown(o));
+        var stale = IsStale(t);
+        _service.MoveOpen(t.Id, delta, o => !_plannedIds.Contains(o.Id) && IsShown(o) && IsStale(o) == stale);
     }
 
     private void ToggleTimer()

@@ -12,6 +12,9 @@ public sealed class AppConfig
     public string DayBoundary { get; set; } = "04:00";
     public double ForgottenTimerWarningHours { get; set; } = 8;
 
+    /// <summary>この業務日数のあいだ触っていない未完了タスクを [保留] にまとめる。0 なら使わない。</summary>
+    public int StaleTaskDays { get; set; } = 14;
+
     [JsonIgnore] public string DataDirectoryPath => Expand(DataDirectory);
     [JsonIgnore] public string ReportDirectoryPath => Expand(ReportDirectory);
 
@@ -48,6 +51,8 @@ public sealed class AppConfig
                 ?? throw new ConfigException("config.json が空です。");
             _ = loaded.DayBoundaryTime;          // 検証
             _ = loaded.ForgottenTimerWarning;    // 検証
+            if (loaded.StaleTaskDays < 0)
+                throw new ConfigException("staleTaskDays は 0 以上にしてください（0 なら保留を使わない）。");
             return loaded;
         }
         catch (JsonException ex)

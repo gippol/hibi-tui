@@ -23,6 +23,7 @@ dotnet publish src/Hibi -c Release -o publish
 | `Shift+↑` / `Shift+↓` | 未完了タスクを並べ替える（`[今日の予定]` は日報で選んだ順なので動かさない） |
 | `/` | 絞り込み。スペース区切りの語をすべて含むもの。`#名前` はプロジェクトだけで探す |
 | `Esc` | 絞り込みを解除する |
+| `h` | `[保留]` を開く / たたむ |
 | `a` | タスクを追加 |
 | `Enter` | タイマーを開始/停止（別のタスクを開始すると前のタイマーは止まる） |
 | `d` | 完了にする / 完了を取り消す（取り消しは確認あり） |
@@ -38,6 +39,10 @@ dotnet publish src/Hibi -c Release -o publish
 
 前の業務日の日報で選んだ「明日の予定」は、一覧の一番上に `[今日の予定]` として出る（完了したものは出ない）。
 土日などで日が空いても、いちばん最近に選んだ予定を使う。
+
+最後に触ってから `staleTaskDays`（既定 14）業務日以上たった未完了タスクは、`[保留 N件]` にまとめてたたんでおく。
+「触った」は作成と作業記録（開始・終了）のこと。タイマーを一度動かせば `[未完了]` に戻る。
+`[今日の予定]` に入っているものと計測中のものは保留にしない。絞り込み中は `[保留]` も開いて出す。
 
 過去の日の日報では、「進行中」にその日の時点で完了していなかったタスクが入り、累計はその日までの時間になる。
 
@@ -71,7 +76,7 @@ dotnet publish src/Hibi -c Release -o publish
 tasks.json は今 `schemaVersion: 2`（並び順 `order` を追加）。v1 のファイルは読み込むときに作成順で並び順を振り、次に保存したときに v2 で書く。
 v2 になったファイルは古い exe では開けない（バックアップは v1 のまま残る）。
 
-設定の項目は `dataDirectory` / `reportDirectory` / `dayBoundary`（既定 `04:00`）/ `forgottenTimerWarningHours`（既定 `8`）。
+設定の項目は `dataDirectory` / `reportDirectory` / `dayBoundary`（既定 `04:00`）/ `forgottenTimerWarningHours`（既定 `8`）/ `staleTaskDays`（既定 `14`。`0` で保留を使わない）。
 
 ## 開発
 

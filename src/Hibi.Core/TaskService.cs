@@ -51,6 +51,27 @@ public sealed class TaskService(TaskData data, BusinessDayCalendar calendar, Tim
 
     public TimeSpan TotalDuration(TaskItem task) => Sum(task.WorkLogs);
 
+    /// <summary>最後に触った業務日: 作成した日と、作業記録の開始・終了のうちいちばん新しい日。</summary>
+    public DateOnly LastActivityDay(TaskItem task)
+    {
+        var last = task.CreatedAt;
+        foreach (var l in task.WorkLogs)
+        {
+            var t = l.End ?? Now;
+            if (t > last) last = t;
+            if (l.Start > last) last = l.Start;
+        }
+        return Calendar.DayOf(last);
+    }
+
+    /// <summary>
+    /// 保留: 未完了で、最後に触ってから <paramref name="days"/> 業務日以上たったもの。
+    /// 計測中は保留にしない。<paramref name="days"/> が 0 なら保留は使わない。
+    /// </summary>
+    public bool IsStale(TaskItem task, int days) =>
+        days > 0 && !task.IsCompleted && !task.IsRunning
+        && Today.DayNumber - LastActivityDay(task).DayNumber >= days;
+
     public bool WorkedOn(TaskItem task, DateOnly day) =>
         task.WorkLogs.Any(l => Calendar.DayOf(l.Start) == day);
 

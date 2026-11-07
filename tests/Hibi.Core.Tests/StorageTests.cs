@@ -75,6 +75,7 @@ public sealed class StorageTests : IDisposable
         Assert.True(File.Exists(path));
         Assert.Equal(TimeSpan.FromHours(4), config.DayBoundaryTime);
         Assert.Contains("\"dayBoundary\": \"04:00\"", File.ReadAllText(path));
+        Assert.Equal(14, config.StaleTaskDays);
         Assert.DoesNotContain("%", config.DataDirectoryPath);
     }
 
@@ -84,6 +85,16 @@ public sealed class StorageTests : IDisposable
         var path = Path.Combine(_dir, "config.json");
         Directory.CreateDirectory(_dir);
         File.WriteAllText(path, """{ "dayBoundary": "25:00" }""");
+
+        Assert.Throws<ConfigException>(() => AppConfig.LoadOrCreate(path));
+    }
+
+    [Fact]
+    public void 保留までの日数は0以上()
+    {
+        var path = Path.Combine(_dir, "config.json");
+        Directory.CreateDirectory(_dir);
+        File.WriteAllText(path, """{ "staleTaskDays": -1 }""");
 
         Assert.Throws<ConfigException>(() => AppConfig.LoadOrCreate(path));
     }
