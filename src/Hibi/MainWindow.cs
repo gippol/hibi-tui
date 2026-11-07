@@ -17,6 +17,7 @@ internal sealed class MainWindow : Window
     private readonly TaskStore _store;
     private readonly AppConfig _config;
 
+    private readonly FrameView _listFrame;
     private readonly ShortcutListView _list;
     private readonly Label _detail;
     private readonly ObservableCollection<string> _rows = [];
@@ -24,6 +25,12 @@ internal sealed class MainWindow : Window
 
     private DateOnly _shownDay;
     private object? _timer;
+
+    /// <summary>一覧の絞り込み（<see cref="TaskFilter"/>）。null なら全部出す。</summary>
+    private string? _filter;
+
+    /// <summary>今 [今日の予定] に出しているタスク。並べ替えを区切りの中に閉じるのに使う。</summary>
+    private HashSet<Guid> _plannedIds = [];
 
     public MainWindow(IApplication app, TaskService service, TaskStore store, AppConfig config)
     {
@@ -34,7 +41,7 @@ internal sealed class MainWindow : Window
 
         Title = AppTitle;
 
-        var listFrame = new FrameView
+        var listFrame = _listFrame = new FrameView
         {
             Title = "タスク",
             X = 0,
@@ -69,7 +76,7 @@ internal sealed class MainWindow : Window
             Y = Pos.AnchorEnd(2),
             Width = Dim.Fill(),
             Height = 2,
-            Text = "a:追加  Enter:開始/停止  d:完了/取消  e:編集  t:時間修正  x:削除\n" +
+            Text = "a:追加  Enter:開始/停止  d:完了/取消  e:編集  t:時間修正  x:削除  /:絞り込み  Shift+↑↓:並べ替え\n" +
                    "n:所感  r:日報出力  N/R:過去の日を選んで  m:月報出力  q:終了",
         };
 
@@ -124,20 +131,23 @@ internal sealed class MainWindow : Window
 
         // 前の業務日の日報で選んだ「明日の予定」を上に出す。下の未完了には重ねて出さない
         var planned = _service.PlannedToday();
-        if (planned.Count > 0)
+        _plannedIds = planned.Select(t => t.Id).ToHashSet();
+        var shownPlanned = planned.Where(IsShown).ToList();
+        if (shownPlanned.Count > 0)
         {
             AddHeader("[今日の予定]");
-            foreach (var t in planned) AddTask(t, OpenMark(t));
+            foreach (var t in shownPlanned) AddTask(t, OpenMark(t));
         }
 
-        var plannedIds = planned.Select(t => t.Id).ToHashSet();
         AddHeader("[未完了]");
-        foreach (var t in _service.OpenTasks().Where(t => !plannedIds.Contains(t.Id)))
+        foreach (var t in _service.OpenTasks().Where(t => !_plannedIds.Contains(t.Id) && IsShown(t)))
             AddTask(t, OpenMark(t));
 
         AddHeader("[今日の完了]");
-        foreach (var t in _service.CompletedOn(_shownDay))
+        foreach (var t in _service.CompletedOn(_shownDay).Where(IsShown))
             AddTask(t, "✓");
+
+        _listFrame.Title = _filter is null ? "タスク" : $"タスク（絞り込み: {_filter}　Esc: 解除）";
 
         // 選択を戻す。なければ最初のタスク行
         var idx = keep is { } id ? _rowTasks.FindIndex(t => t?.Id == id) : -1;
@@ -148,6 +158,8 @@ internal sealed class MainWindow : Window
         UpdateTitle();
         UpdateDetail();
     }
+
+    private bool IsShown(TaskItem t) => TaskFilter.Matches(t, _filter);
 
     private static string OpenMark(TaskItem t) => t.IsRunning ? "▶" : t.WorkLogs.Count > 0 ? "・" : " ";
 
@@ -209,7 +221,23 @@ internal sealed class MainWindow : Window
             return true;
         }
 
+        if (key == Key.CursorUp.WithShift || key == Key.CursorDown.WithShift)
+        {
+            Run(() => MoveSelected(key == Key.CursorUp.WithShift ? -1 : 1));
+            return true;
+        }
+
+        // 絞り込み中の Esc は解除。絞り込んでいなければ今までどおり（アプリの既定の動き）に任せる
+        if (key == Key.Esc && _filter is not null)
+        {
+            _filter = null;
+            Refresh();
+            return true;
+        }
+
         Action? action =
+            key.AsRune.Value == '/' ? AskFilter
+            :
             key == Key.A ? AddTask
             : key == Key.Enter ? ToggleTimer
             : key == Key.D ? ToggleComplete
@@ -248,7 +276,25 @@ internal sealed class MainWindow : Window
         if (Dialogs.EditTask(_app, "タスクを追加", null, null, null, _service.Projects()) is not { } r) return;
         var t = _service.Add(r.Title, r.Project, r.Memo);
         Refresh();
-        _list.Value = _rowTasks.IndexOf(t);
+        if (_rowTasks.IndexOf(t) is var i and >= 0) _list.Value = i; // 絞り込みで見えないときは選択を動かさない
+    }
+
+    private void AskFilter()
+    {
+        var q = Dialogs.AskLine(_app, "絞り込み", "タイトル・プロジェクトに含む文字", _filter,
+            "スペース区切り: すべてを含む  #名前: プロジェクトだけ  空: 解除");
+        if (q is null) return;
+        _filter = string.IsNullOrWhiteSpace(q) ? null : q.Trim();
+    }
+
+    /// <summary>
+    /// 選んでいるタスクを、同じ区切り（[今日の予定] は除く）の中で見えている隣と入れ替える。
+    /// [今日の予定] の並びは日報で選んだ順なので、ここでは動かさない。
+    /// </summary>
+    private void MoveSelected(int delta)
+    {
+        if (Selected is not { } t || t.IsCompleted || _plannedIds.Contains(t.Id)) return;
+        _service.MoveOpen(t.Id, delta, o => !_plannedIds.Contains(o.Id) && IsShown(o));
     }
 
     private void ToggleTimer()

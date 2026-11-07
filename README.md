@@ -20,6 +20,9 @@ dotnet publish src/Hibi -c Release -o publish
 | キー | 操作 |
 |---|---|
 | ↑ / ↓ | タスクを選ぶ（見出し行は飛ばす） |
+| `Shift+↑` / `Shift+↓` | 未完了タスクを並べ替える（`[今日の予定]` は日報で選んだ順なので動かさない） |
+| `/` | 絞り込み。スペース区切りの語をすべて含むもの。`#名前` はプロジェクトだけで探す |
+| `Esc` | 絞り込みを解除する |
 | `a` | タスクを追加 |
 | `Enter` | タイマーを開始/停止（別のタスクを開始すると前のタイマーは止まる） |
 | `d` | 完了にする / 完了を取り消す（取り消しは確認あり） |
@@ -62,6 +65,9 @@ dotnet publish src/Hibi -c Release -o publish
 | バックアップ | `%APPDATA%\hibi\backup\`（起動するたびに取る。7世代を残す） |
 | 日報 | `%USERPROFILE%\Documents\hibi\reports\YYYY-MM-DD.md` |
 | 月報 | `%USERPROFILE%\Documents\hibi\reports\YYYY-MM.md`（日報と同じフォルダ） |
+
+tasks.json は今 `schemaVersion: 2`（並び順 `order` を追加）。v1 のファイルは読み込むときに作成順で並び順を振り、次に保存したときに v2 で書く。
+v2 になったファイルは古い exe では開けない（バックアップは v1 のまま残る）。
 
 設定の項目は `dataDirectory` / `reportDirectory` / `dayBoundary`（既定 `04:00`）/ `forgottenTimerWarningHours`（既定 `8`）。
 

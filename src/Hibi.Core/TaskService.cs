@@ -31,9 +31,12 @@ public sealed class TaskService(TaskData data, BusinessDayCalendar calendar, Tim
         }
     }
 
-    /// <summary>未完了タスク（作成順）。</summary>
+    /// <summary>未完了タスク（並び順）。</summary>
     public IReadOnlyList<TaskItem> OpenTasks() =>
-        Data.Tasks.Where(t => !t.IsCompleted).OrderBy(t => t.CreatedAt).ToList();
+        InOrder(Data.Tasks.Where(t => !t.IsCompleted)).ToList();
+
+    private static IEnumerable<TaskItem> InOrder(IEnumerable<TaskItem> tasks) =>
+        tasks.OrderBy(t => t.Order).ThenBy(t => t.CreatedAt);
 
     /// <summary>指定業務日に完了したタスク（完了順）。</summary>
     public IReadOnlyList<TaskItem> CompletedOn(DateOnly day) =>
@@ -93,6 +96,7 @@ public sealed class TaskService(TaskData data, BusinessDayCalendar calendar, Tim
             Title = RequireTitle(title),
             Project = Normalize(project),
             Memo = Normalize(memo),
+            Order = Data.Tasks.Count == 0 ? 0 : Data.Tasks.Max(t => t.Order) + 1,
             CreatedAt = Now,
         };
         Data.Tasks.Add(task);
@@ -116,6 +120,33 @@ public sealed class TaskService(TaskData data, BusinessDayCalendar calendar, Tim
         foreach (var day in Data.Days.Values)
             day.TomorrowTaskIds.Remove(id);
         OnChanged();
+    }
+
+    /// <summary>
+    /// 未完了タスクを1つ上（<paramref name="delta"/> = -1）か下（+1）に動かす。
+    /// <paramref name="among"/> を渡すと、それに当たるタスクの中での隣と入れ替える（絞り込み中や一覧の区切りごと）。
+    /// 動かせなければ false。
+    /// </summary>
+    public bool MoveOpen(Guid id, int delta, Func<TaskItem, bool>? among = null)
+    {
+        if (delta is not (-1 or 1)) throw new ArgumentOutOfRangeException(nameof(delta));
+        var task = Get(id);
+        if (task.IsCompleted) return false;
+
+        var visible = OpenTasks().Where(t => t == task || among?.Invoke(t) != false).ToList();
+        var i = visible.IndexOf(task);
+        if (i + delta < 0 || i + delta >= visible.Count) return false;
+        var neighbor = visible[i + delta];
+
+        // 全タスクの並びの中で、隣の前（上へ）か後ろ（下へ）に入れて番号を振り直す
+        var all = InOrder(Data.Tasks).ToList();
+        all.Remove(task);
+        var at = all.IndexOf(neighbor) + (delta > 0 ? 1 : 0);
+        all.Insert(at, task);
+        for (var n = 0; n < all.Count; n++) all[n].Order = n;
+
+        OnChanged();
+        return true;
     }
 
     public void Complete(Guid id)

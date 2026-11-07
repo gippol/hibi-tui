@@ -5,7 +5,8 @@ namespace Hibi.Core;
 /// <summary>tasks.json のルート。</summary>
 public sealed class TaskData
 {
-    public const int CurrentSchemaVersion = 1;
+    /// <summary>2: TaskItem.Order を追加。</summary>
+    public const int CurrentSchemaVersion = 2;
 
     public int SchemaVersion { get; set; } = CurrentSchemaVersion;
     public List<TaskItem> Tasks { get; set; } = [];
@@ -20,6 +21,10 @@ public sealed class TaskItem
     public string Title { get; set; } = "";
     public string? Project { get; set; }
     public string? Memo { get; set; }
+
+    /// <summary>一覧での並び順（小さいほど上）。すべてのタスクで通しの番号。</summary>
+    public int Order { get; set; }
+
     public DateTimeOffset CreatedAt { get; set; }
     public DateTimeOffset? CompletedAt { get; set; }
     public List<WorkLog> WorkLogs { get; set; } = [];

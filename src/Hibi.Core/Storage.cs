@@ -78,12 +78,25 @@ public sealed class TaskStore(string dataDirectory)
                 ?? throw new DataLoadException("tasks.json が空です。");
             if (data.SchemaVersion > TaskData.CurrentSchemaVersion)
                 throw new DataLoadException($"tasks.json のバージョン({data.SchemaVersion})にこのアプリは対応していません。");
+            Migrate(data);
             return data;
         }
         catch (JsonException ex)
         {
             throw new DataLoadException($"tasks.json を読めません: {ex.Message}", ex);
         }
+    }
+
+    /// <summary>古い形のデータを今の形に直す。ファイルには次に保存したときに書かれる。</summary>
+    private static void Migrate(TaskData data)
+    {
+        if (data.SchemaVersion < 2)
+        {
+            // 1 → 2: 並び順を作成順で振る
+            var i = 0;
+            foreach (var t in data.Tasks.OrderBy(t => t.CreatedAt)) t.Order = i++;
+        }
+        data.SchemaVersion = TaskData.CurrentSchemaVersion;
     }
 
     public void Save(TaskData data) =>

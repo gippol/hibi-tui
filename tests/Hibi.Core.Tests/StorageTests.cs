@@ -99,3 +99,36 @@ public sealed class StorageTests : IDisposable
         Assert.Equal("new", File.ReadAllText(path));
     }
 }
+
+public sealed class SchemaMigrationTests : IDisposable
+{
+    private readonly string _dir = Path.Combine(Path.GetTempPath(), "hibi-tests", Guid.NewGuid().ToString("N"));
+
+    public void Dispose()
+    {
+        if (Directory.Exists(_dir)) Directory.Delete(_dir, recursive: true);
+    }
+
+    [Fact]
+    public void バージョン1のデータは作成順に並び順を振る()
+    {
+        Directory.CreateDirectory(_dir);
+        var store = new TaskStore(_dir);
+        File.WriteAllText(store.DataPath, """
+            {
+              "schemaVersion": 1,
+              "tasks": [
+                { "id": "00000000-0000-0000-0000-000000000002", "title": "B", "createdAt": "2026-11-06T10:00:00+09:00", "workLogs": [] },
+                { "id": "00000000-0000-0000-0000-000000000001", "title": "A", "createdAt": "2026-11-05T10:00:00+09:00", "workLogs": [] }
+              ],
+              "days": {}
+            }
+            """);
+
+        var data = store.Load();
+
+        Assert.Equal(TaskData.CurrentSchemaVersion, data.SchemaVersion);
+        Assert.Equal(1, data.Tasks.Single(t => t.Title == "B").Order);
+        Assert.Equal(0, data.Tasks.Single(t => t.Title == "A").Order);
+    }
+}

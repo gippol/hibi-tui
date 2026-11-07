@@ -251,6 +251,21 @@ internal static class Dialogs
         }
     }
 
+    // ---------- 1行の入力 ----------
+
+    /// <summary>1行の文字を入れてもらう。キャンセルなら null。</summary>
+    public static string? AskLine(IApplication app, string title, string prompt, string? initial, string help)
+    {
+        using var d = new Dialog { Title = title, Width = Dim.Percent(60), Height = 10 };
+        var field = new TextField { X = 1, Y = 1, Width = Dim.Fill(1), Text = initial ?? "" };
+        d.Add(
+            new Label { X = 1, Y = 0, Text = prompt }, field,
+            new Label { X = 1, Y = 3, Width = Dim.Fill(1), Text = help });
+        field.SetFocus();
+        field.MoveEnd();
+        return Show(app, d, [Ok, Cancel], field) == 0 ? field.Text : null;
+    }
+
     // ---------- 業務日の入力（過去の所感・日報） ----------
 
     /// <summary>業務日（yyyy-MM-dd）を入れてもらう。<paramref name="max"/> より後は受け付けない。キャンセルなら null。</summary>
