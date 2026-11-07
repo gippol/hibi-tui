@@ -3,7 +3,7 @@ using System.Text;
 
 namespace Hibi.Core;
 
-/// <summary>日報（要件 4.4）と月報（要件 4.6）の Markdown の生成。</summary>
+/// <summary>日報（要件 4.4）・月報（要件 4.6）・週報の Markdown の生成。</summary>
 public static class ReportGenerator
 {
     public const string NoProject = "その他";
@@ -55,14 +55,24 @@ public static class ReportGenerator
     // ---------- 月報 ----------
 
     /// <summary><paramref name="month"/> を含む月（業務日の1日〜末日）の月報。</summary>
-    public static string GenerateMonthly(TaskService service, DateOnly month)
+    public static string GenerateMonthly(TaskService service, DateOnly month) =>
+        GeneratePeriod(service, "月報", ReportPeriod.MonthOf(month));
+
+    // ---------- 週報 ----------
+
+    /// <summary><paramref name="day"/> を含む週（業務日の月曜〜日曜）の週報。中身の形は月報と同じ。</summary>
+    public static string GenerateWeekly(TaskService service, DateOnly day) =>
+        GeneratePeriod(service, "週報", ReportPeriod.WeekOf(day));
+
+    // ---------- 期間のまとめ（月報・週報） ----------
+
+    private static string GeneratePeriod(TaskService service, string kind, ReportPeriod period)
     {
-        var from = new DateOnly(month.Year, month.Month, 1);
-        var to = from.AddMonths(1).AddDays(-1);
+        var (from, to) = (period.From, period.To);
 
         var completed = service.CompletedIn(from, to);
         var completedIds = completed.Select(t => t.Id).ToHashSet();
-        // 月内に作業して、月内には完了していないもの（あとで完了したものも、その月の時点では進行中）
+        // 期間内に作業して、期間内には完了していないもの（あとで完了したものも、その時点では進行中）
         var inProgress = service.Data.Tasks
             .Where(t => !completedIds.Contains(t.Id) && service.WorkedIn(t, from, to))
             .OrderBy(t => service.LogsIn(t, from, to).Min(l => l.Start))
@@ -90,7 +100,7 @@ public static class ReportGenerator
             .ToList();
 
         var sb = new StringBuilder();
-        sb.Append($"# 月報 {from:yyyy-MM}\n\n");
+        sb.Append($"# {kind} {period.Name}\n\n");
         sb.Append($"期間: {Day(from, full: true)} 〜 {Day(to, full: true)}\n");
         sb.Append($"稼働合計: {DurationFormat.Short(total)}（稼働 {byDay.Count}日）\n\n");
 

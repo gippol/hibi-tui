@@ -32,6 +32,7 @@ dotnet publish src/Hibi -c Release -o publish
 | `n` | 今日の所感を書く |
 | `r` | 明日の予定を選んで日報を出力 |
 | `N` / `R`（Shift） | 業務日（既定は前の日）を選んで、所感を書く / 日報を出力する（書き忘れ・出し忘れの取り戻し） |
+| `w` | 日付（既定は今日）を入れて、その日を含む週（月曜〜日曜）の週報を出力 |
 | `m` | 月（`yyyy-MM`、既定は今月）を入れて月報を出力 |
 | `q` | 終了（タイマーは止まらない。次に起動したとき、長時間動いていたら確認する） |
 
@@ -65,6 +66,7 @@ dotnet publish src/Hibi -c Release -o publish
 | バックアップ | `%APPDATA%\hibi\backup\`（起動するたびに取る。7世代を残す） |
 | 日報 | `%USERPROFILE%\Documents\hibi\reports\YYYY-MM-DD.md` |
 | 月報 | `%USERPROFILE%\Documents\hibi\reports\YYYY-MM.md`（日報と同じフォルダ） |
+| 週報 | `%USERPROFILE%\Documents\hibi\reports\YYYY-Www.md`（ISO 週番号。例: `2026-W45.md`） |
 
 tasks.json は今 `schemaVersion: 2`（並び順 `order` を追加）。v1 のファイルは読み込むときに作成順で並び順を振り、次に保存したときに v2 で書く。
 v2 になったファイルは古い exe では開けない（バックアップは v1 のまま残る）。

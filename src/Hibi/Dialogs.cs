@@ -269,14 +269,15 @@ internal static class Dialogs
     // ---------- 業務日の入力（過去の所感・日報） ----------
 
     /// <summary>業務日（yyyy-MM-dd）を入れてもらう。<paramref name="max"/> より後は受け付けない。キャンセルなら null。</summary>
-    public static DateOnly? AskDay(IApplication app, string title, DateOnly initial, DateOnly max)
+    public static DateOnly? AskDay(IApplication app, string title, DateOnly initial, DateOnly max,
+        string prompt = "対象の業務日（yyyy-MM-dd）")
     {
         var text = BusinessDayCalendar.Key(initial);
         while (true)
         {
             using var d = new Dialog { Title = title, Width = 50, Height = 10 };
             var field = new TextField { X = 1, Y = 1, Width = Dim.Fill(1), Text = text };
-            d.Add(new Label { X = 1, Y = 0, Text = "対象の業務日（yyyy-MM-dd）" }, field);
+            d.Add(new Label { X = 1, Y = 0, Text = prompt }, field);
             field.SetFocus();
             if (Show(app, d, [Ok, Cancel], field) != 0) return null;
 

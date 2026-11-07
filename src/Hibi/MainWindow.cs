@@ -77,7 +77,7 @@ internal sealed class MainWindow : Window
             Width = Dim.Fill(),
             Height = 2,
             Text = "a:追加  Enter:開始/停止  d:完了/取消  e:編集  t:時間修正  x:削除  /:絞り込み  Shift+↑↓:並べ替え\n" +
-                   "n:所感  r:日報出力  N/R:過去の日を選んで  m:月報出力  q:終了",
+                   "n:所感  r:日報出力  N/R:過去の日を選んで  w:週報出力  m:月報出力  q:終了",
         };
 
         Add(listFrame, detailFrame, footer);
@@ -249,6 +249,7 @@ internal sealed class MainWindow : Window
             : key == Key.R ? () => OutputReport(_service.Today)
             : key == Key.R.WithShift ? () => WithPastDay("日報を出力", OutputReport)
             : key == Key.M ? OutputMonthlyReport
+            : key == Key.W ? OutputWeeklyReport
             : key == Key.Q ? () => _app.RequestStop()
             : null;
         if (action is null) return false;
@@ -378,6 +379,26 @@ internal sealed class MainWindow : Window
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
         {
             Dialogs.Error(_app, $"月報を保存できませんでした: {ex.Message}");
+        }
+    }
+
+    private void OutputWeeklyReport()
+    {
+        var today = _service.Today;
+        if (Dialogs.AskDay(_app, "週報を出力", today, today, "その週の中の業務日（yyyy-MM-dd）。週は月曜〜日曜") is not { } day)
+            return;
+
+        var week = ReportPeriod.WeekOf(day);
+        var markdown = ReportGenerator.GenerateWeekly(_service, day);
+        try
+        {
+            var path = ReportWriter.WriteWeekly(_config.ReportDirectoryPath, week, markdown);
+            Dialogs.Info(_app, "週報を出力しました",
+                $"{BusinessDayCalendar.Key(week.From)} 〜 {BusinessDayCalendar.Key(week.To)}\n{path}");
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            Dialogs.Error(_app, $"週報を保存できませんでした: {ex.Message}");
         }
     }
 

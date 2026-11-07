@@ -125,7 +125,11 @@ public static class ReportWriter
 
     /// <summary>月報: &lt;日報フォルダ&gt;\YYYY-MM.md</summary>
     public static string WriteMonthly(string reportDirectory, DateOnly month, string markdown) =>
-        WriteFile(reportDirectory, month.ToString("yyyy-MM", CultureInfo.InvariantCulture), markdown);
+        WriteFile(reportDirectory, ReportPeriod.MonthOf(month).Name, markdown);
+
+    /// <summary>週報: &lt;日報フォルダ&gt;\YYYY-Www.md（ISO 週番号）</summary>
+    public static string WriteWeekly(string reportDirectory, ReportPeriod week, string markdown) =>
+        WriteFile(reportDirectory, week.Name, markdown);
 
     private static string WriteFile(string reportDirectory, string name, string markdown)
     {
