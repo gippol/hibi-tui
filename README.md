@@ -12,6 +12,7 @@ dotnet publish src/Hibi -c Release -o publish
 
 `publish\hibi.exe` を PATH の通ったフォルダに置けば、どこからでも `hibi` で起動できる。
 .NET ランタイムを別に入れる必要はない。
+exe を配るときは、同じフォルダにできる `LICENSE` と `THIRD-PARTY-NOTICES.txt` も一緒に配る。
 
 開発中は `dotnet run --project src/Hibi` でも動く。
 
@@ -99,3 +100,9 @@ publish\hibi.exe --startup-check          # 最初の描画まで行って終了
 | `src/Hibi.Core` | モデル・業務日・タイマー・日報の生成・保存（UI に依存しない） |
 | `src/Hibi` | Terminal.Gui v2 の TUI |
 | `tests/Hibi.Core.Tests` | xUnit のテスト |
+
+## ライセンス
+
+[MIT License](LICENSE)。
+
+hibi.exe に入っているライブラリ（Terminal.Gui、.NET ランタイムなど）のライセンスは [THIRD-PARTY-NOTICES.txt](THIRD-PARTY-NOTICES.txt) にまとめてある。

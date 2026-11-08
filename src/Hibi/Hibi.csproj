@@ -28,4 +28,10 @@
     <DebugType>none</DebugType>
   </PropertyGroup>
 
+  <!-- ライセンス表記を exe の隣に置く（exe の中には入れない） -->
+  <ItemGroup>
+    <None Include="..\..\LICENSE" Link="LICENSE" CopyToPublishDirectory="PreserveNewest" ExcludeFromSingleFile="true" />
+    <None Include="..\..\THIRD-PARTY-NOTICES.txt" Link="THIRD-PARTY-NOTICES.txt" CopyToPublishDirectory="PreserveNewest" ExcludeFromSingleFile="true" />
+  </ItemGroup>
+
 </Project>
