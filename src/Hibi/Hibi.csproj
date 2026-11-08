@@ -16,6 +16,7 @@
     <!-- コマンド名は hibi -->
     <AssemblyName>hibi</AssemblyName>
     <RootNamespace>Hibi</RootNamespace>
+	<PackageId>hibi-tui</PackageId>
   </PropertyGroup>
 
   <!-- 配布用: dotnet publish src/Hibi -c Release で exe 1つ（N-D-01） -->
