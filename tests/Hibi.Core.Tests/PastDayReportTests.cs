@@ -23,7 +23,7 @@ public class PastDayReportTests
 
         Assert.Contains("稼働合計: 1h00m", md);
         Assert.Contains("## 完了\nなし\n", md);
-        Assert.Contains("## 進行中\n### backend\n- API修正 — 1h00m（累計 1h00m）\n", md);
+        Assert.Contains("## 進行中\n### backend\n- API修正 — 1h00m（累計 1h00m）10:00〜11:00\n", md);
     }
 
     [Fact]
@@ -41,6 +41,6 @@ public class PastDayReportTests
 
         var md = ReportGenerator.Generate(svc, svc.Today);
 
-        Assert.Contains("- API修正 — 0h30m（累計 1h30m）\n", md);
+        Assert.Contains("- API修正 — 0h30m（累計 1h30m）10:00〜10:30\n", md);
     }
 }

@@ -35,11 +35,14 @@ public static class ReportGenerator
         // 累計はその日まで（今日の日報なら全期間と同じ）
         TimeSpan UpToDay(TaskItem t) => service.DurationIn(t, DateOnly.MinValue, day);
 
+        // その日の作業記録の時間帯
+        string Slots(TaskItem t) => TimeSlots(service.LogsIn(t, day, day));
+
         sb.Append("## 完了\n");
-        AppendGrouped(sb, completed, t => service.DurationOn(t, day), UpToDay);
+        AppendGrouped(sb, completed, t => service.DurationOn(t, day), UpToDay, Slots);
 
         sb.Append("\n## 進行中\n");
-        AppendGrouped(sb, inProgress, t => service.DurationOn(t, day), UpToDay);
+        AppendGrouped(sb, inProgress, t => service.DurationOn(t, day), UpToDay, Slots);
 
         sb.Append("\n## 明日の予定\n");
         if (tomorrow.Count == 0) sb.Append(None).Append('\n');
@@ -139,6 +142,16 @@ public static class ReportGenerator
     private static string Day(DateOnly d, bool full) =>
         $"{d.ToString(full ? "yyyy-MM-dd" : "MM-dd", CultureInfo.InvariantCulture)}（{BusinessDayCalendar.JaWeekday(d)}）";
 
+    /// <summary>
+    /// `09:00〜10:30, 13:00〜14:15` の形。開始の順に並べる。時刻は記録したときの壁時計（業務日の判定と同じ）。
+    /// 計測中は終了を空けて `13:00〜` と書く。
+    /// </summary>
+    internal static string TimeSlots(IEnumerable<WorkLog> logs) =>
+        string.Join(", ", logs.OrderBy(l => l.Start).Select(l =>
+            $"{Clock(l.Start)}〜{(l.End is { } e ? Clock(e) : "")}"));
+
+    private static string Clock(DateTimeOffset t) => t.ToString("HH:mm", CultureInfo.InvariantCulture);
+
     private static DateOnly? ParseKey(string key) =>
         DateOnly.TryParseExact(key, "yyyy-MM-dd", CultureInfo.InvariantCulture, DateTimeStyles.None, out var d) ? d : null;
 
@@ -147,7 +160,8 @@ public static class ReportGenerator
         projects.OrderBy(p => p is null ? 1 : 0).ThenBy(p => p, StringComparer.Ordinal);
 
     private static void AppendGrouped(StringBuilder sb, IReadOnlyList<TaskItem> tasks,
-        Func<TaskItem, TimeSpan> duration, Func<TaskItem, TimeSpan> cumulative)
+        Func<TaskItem, TimeSpan> duration, Func<TaskItem, TimeSpan> cumulative,
+        Func<TaskItem, string>? suffix = null)
     {
         if (tasks.Count == 0)
         {
@@ -161,7 +175,7 @@ public static class ReportGenerator
         {
             sb.Append($"### {project ?? NoProject}\n");
             foreach (var t in groups[project])
-                sb.Append($"- {t.Title} — {DurationFormat.Short(duration(t))}（累計 {DurationFormat.Short(cumulative(t))}）\n");
+                sb.Append($"- {t.Title} — {DurationFormat.Short(duration(t))}（累計 {DurationFormat.Short(cumulative(t))}）{suffix?.Invoke(t)}\n");
         }
     }
 }

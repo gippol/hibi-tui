@@ -46,15 +46,15 @@ public class ReportGeneratorTests
 
             ## 完了
             ### backend
-            - DBマイグレーション — 1h30m（累計 3h00m）
+            - DBマイグレーション — 1h30m（累計 3h00m）09:00〜10:30
             ### frontend
-            - ヘッダー修正 — 0h40m（累計 0h40m）
+            - ヘッダー修正 — 0h40m（累計 0h40m）11:00〜11:40
 
             ## 進行中
             ### backend
-            - API修正 — 2h15m（累計 4h10m）
+            - API修正 — 2h15m（累計 4h10m）13:00〜15:15
             ### その他
-            - 問い合わせ対応 — 0h05m（累計 0h05m）
+            - 問い合わせ対応 — 0h05m（累計 0h05m）12:00〜12:05
 
             ## 明日の予定
             - API修正
@@ -96,6 +96,27 @@ public class ReportGeneratorTests
 
             """.ReplaceLineEndings("\n"),
             md);
+    }
+
+    [Fact]
+    public void 時間帯はその日の作業記録を開始の順に並べる()
+    {
+        var (svc, clock) = Fixture.Create(FakeClock.At(2026, 11, 6, 9, 0));
+        var api = svc.Add("API修正", "backend");
+
+        // 前の業務日の作業は載せない
+        Work(svc, clock, api, FakeClock.At(2026, 11, 5, 15, 0), TimeSpan.FromMinutes(30));
+        Work(svc, clock, api, FakeClock.At(2026, 11, 6, 9, 0), TimeSpan.FromMinutes(60));
+        // 日付をまたいでも、4:00 までは同じ業務日
+        Work(svc, clock, api, FakeClock.At(2026, 11, 6, 23, 30), TimeSpan.FromMinutes(90));
+        // 計測中は終了を空ける
+        clock.Set(FakeClock.At(2026, 11, 7, 2, 0));
+        svc.Start(api.Id);
+        clock.Advance(TimeSpan.FromMinutes(10));
+
+        var md = ReportGenerator.Generate(svc, new DateOnly(2026, 11, 6));
+
+        Assert.Contains("- API修正 — 2h40m（累計 3h10m）09:00〜10:00, 23:30〜01:00, 02:00〜\n", md);
     }
 
     [Theory]
