@@ -1,4 +1,4 @@
-# hibi — 日々
+# hibi-tui — 日々
 
 タスクを管理して、作業時間を記録し、その日の日報と月報を Markdown で出力する TUI アプリ。
 要件は [docs/requirements.md](docs/requirements.md)。
