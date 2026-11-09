@@ -161,7 +161,7 @@ public sealed class SchemaV3StorageTests : IDisposable
         var json = File.ReadAllText(store.DataPath);
         var lt = Assert.Single(store.Load().Tasks);
 
-        Assert.Contains("\"schemaVersion\": 3", json);
+        Assert.Contains($"\"schemaVersion\": {TaskData.CurrentSchemaVersion}", json);
         Assert.Contains("\"due\": \"2026-11-10\"", json);
         Assert.Contains("\"priority\": \"high\"", json);
         Assert.Contains("\"onHold\": true", json);
@@ -189,7 +189,7 @@ public sealed class SchemaV3StorageTests : IDisposable
         var data = store.Load();
         var t = Assert.Single(data.Tasks);
 
-        Assert.Equal(3, data.SchemaVersion);
+        Assert.Equal(TaskData.CurrentSchemaVersion, data.SchemaVersion);
         Assert.Null(t.UpdatedAt);
         Assert.False(t.OnHold);
         Assert.Null(t.Due);

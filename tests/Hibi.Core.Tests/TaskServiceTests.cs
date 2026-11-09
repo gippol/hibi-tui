@@ -141,6 +141,22 @@ public class TaskServiceTests
     }
 
     [Fact]
+    public void 作業記録の終了時刻に未来は入れられない()
+    {
+        var (svc, _) = Fixture.Create(FakeClock.At(2026, 11, 6, 12, 0));
+        var a = svc.Add("A");
+
+        Assert.Throws<ArgumentException>(() => svc.ReplaceWorkLogs(a.Id,
+            [new WorkLog { Start = FakeClock.At(2026, 11, 6, 10, 0), End = FakeClock.At(2026, 11, 6, 23, 0) }]));
+        Assert.Empty(a.WorkLogs);
+
+        // 今ちょうどまでは入れられる
+        svc.ReplaceWorkLogs(a.Id,
+            [new WorkLog { Start = FakeClock.At(2026, 11, 6, 10, 0), End = FakeClock.At(2026, 11, 6, 12, 0) }]);
+        Assert.Equal(TimeSpan.FromHours(2), svc.TotalDuration(a));
+    }
+
+    [Fact]
     public void 削除すると明日の予定からも消える()
     {
         var (svc, _) = Fixture.Create();

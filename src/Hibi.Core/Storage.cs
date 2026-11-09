@@ -101,6 +101,12 @@ public sealed class TaskStore(string dataDirectory)
             var i = 0;
             foreach (var t in data.Tasks.OrderBy(t => t.CreatedAt)) t.Order = i++;
         }
+        if (data.SchemaVersion < 4)
+        {
+            // 3 → 4: 選んだかの印はなかったので、予定が空でない日だけ選んだことにする
+            // （何も選ばずに出力した日は区別できないので、選んでいない扱い）
+            foreach (var day in data.Days.Values) day.TomorrowChosen = day.TomorrowTaskIds.Count > 0;
+        }
         data.SchemaVersion = TaskData.CurrentSchemaVersion;
     }
 

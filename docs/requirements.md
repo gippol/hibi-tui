@@ -321,7 +321,7 @@
 
 ```json
 {
-  "schemaVersion": 3,
+  "schemaVersion": 4,
   "tasks": [
     {
       "id": "0b9c...（GUID）",
@@ -344,7 +344,8 @@
   "days": {
     "2026-11-06": {
       "note": "所感のテキスト",
-      "tomorrowTaskIds": ["0b9c..."]
+      "tomorrowTaskIds": ["0b9c..."],
+      "tomorrowChosen": true
     }
   }
 }
@@ -358,6 +359,7 @@
 - `schemaVersion` は、あとでデータの形を変えるとき（マイグレーション）に使う
   - 2: `order`（並び順。小さいほど上。全タスクで通し番号）を追加。v1 は作成順で振る
   - 3: `updatedAt`（null 可）/ `onHold` / `due`（null 可）/ `priority`（`high` / `normal` / `low`）を追加。v2 以前は既定値で読む
+  - 4: `days` の各日に `tomorrowChosen`（その日に明日の予定を選んだか）を追加。何も選ばずに日報を出した日も true で、所感だけ書いた日は false。v3 以前は `tomorrowTaskIds` が空でない日だけ true にする
 
 ### 6.3 config.json
 

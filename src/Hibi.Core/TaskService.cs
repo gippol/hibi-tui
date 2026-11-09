@@ -300,6 +300,8 @@ public sealed class TaskService(TaskData data, BusinessDayCalendar calendar, Tim
                 throw new ArgumentException($"終了時刻が開始時刻以前の記録があります: {l.Start:MM-dd HH:mm}");
             if (l.Start > Now)
                 throw new ArgumentException($"未来の開始時刻は指定できません: {l.Start:MM-dd HH:mm}");
+            if (l.End is { } fe && fe > Now)
+                throw new ArgumentException($"未来の終了時刻は指定できません: {fe:MM-dd HH:mm}");
         }
         task.WorkLogs = logs.OrderBy(l => l.Start).ToList();
         OnChanged();
@@ -312,6 +314,7 @@ public sealed class TaskService(TaskData data, BusinessDayCalendar calendar, Tim
 
     /// <summary>
     /// 今日の予定: 今日より前で、明日の予定を選んだいちばん新しい業務日の選択（土日などをはさんでもよい）。
+    /// その日に何も選ばなかった・選んだものを全部消したなら、それより前の日にはさかのぼらず予定なし。
     /// 完了したもの・消したもの・手で保留にしたものは除く。並びは選んだときの順。
     /// </summary>
     public IReadOnlyList<TaskItem> PlannedToday()
@@ -319,7 +322,7 @@ public sealed class TaskService(TaskData data, BusinessDayCalendar calendar, Tim
         var today = BusinessDayCalendar.Key(Today);
         // キーは yyyy-MM-dd なので文字列の順 = 日付の順
         var ids = Data.Days
-            .Where(kv => string.CompareOrdinal(kv.Key, today) < 0 && kv.Value.TomorrowTaskIds.Count > 0)
+            .Where(kv => string.CompareOrdinal(kv.Key, today) < 0 && kv.Value.TomorrowChosen)
             .OrderByDescending(kv => kv.Key, StringComparer.Ordinal)
             .Select(kv => kv.Value.TomorrowTaskIds)
             .FirstOrDefault() ?? [];
@@ -334,7 +337,9 @@ public sealed class TaskService(TaskData data, BusinessDayCalendar calendar, Tim
 
     public void SetTomorrow(DateOnly day, IEnumerable<Guid> taskIds)
     {
-        GetOrCreateDay(day).TomorrowTaskIds = taskIds.Distinct().ToList();
+        var record = GetOrCreateDay(day);
+        record.TomorrowTaskIds = taskIds.Distinct().ToList();
+        record.TomorrowChosen = true;
         OnChanged();
     }
 

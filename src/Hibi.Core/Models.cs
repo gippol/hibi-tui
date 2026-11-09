@@ -8,8 +8,9 @@ public sealed class TaskData
     /// <summary>
     /// 2: TaskItem.Order を追加。
     /// 3: TaskItem.UpdatedAt / OnHold / Due / Priority を追加（どれも省略時は既定値）。
+    /// 4: DayRecord.TomorrowChosen を追加。
     /// </summary>
-    public const int CurrentSchemaVersion = 3;
+    public const int CurrentSchemaVersion = 4;
 
     public int SchemaVersion { get; set; } = CurrentSchemaVersion;
     public List<TaskItem> Tasks { get; set; } = [];
@@ -74,6 +75,12 @@ public sealed class DayRecord
 {
     public string? Note { get; set; }
     public List<Guid> TomorrowTaskIds { get; set; } = [];
+
+    /// <summary>
+    /// この日に明日の予定を選んだか（日報を出力したか）。<see cref="TomorrowTaskIds"/> が空でも、
+    /// 「何も選ばなかった」なら true。所感だけ書いた日は false。
+    /// </summary>
+    public bool TomorrowChosen { get; set; }
 }
 
 /// <summary>優先度。JSON には小文字の名前で書く。</summary>
