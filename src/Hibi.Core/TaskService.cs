@@ -107,12 +107,23 @@ public sealed class TaskService(TaskData data, BusinessDayCalendar calendar, Tim
         return logs.Aggregate(TimeSpan.Zero, (acc, l) => acc + l.DurationAt(now));
     }
 
+    /// <summary>
+    /// プロジェクト名の並び順。大文字小文字を区別せずに並べ、それだけ違うものは文字コード順（大文字が先）。
+    /// 漢字・かなは文字コード順のまま。
+    /// </summary>
+    public static readonly IComparer<string?> ProjectOrder = Comparer<string?>.Create((a, b) =>
+    {
+        var c = StringComparer.OrdinalIgnoreCase.Compare(a, b);
+        return c != 0 ? c : StringComparer.Ordinal.Compare(a, b);
+    });
+
+    /// <summary>使われているプロジェクト名。大文字小文字だけ違うものは別のプロジェクトとして扱う。</summary>
     public IReadOnlyList<string> Projects() =>
         Data.Tasks
             .Select(t => t.Project)
             .OfType<string>()
             .Distinct(StringComparer.Ordinal)
-            .Order(StringComparer.Ordinal)
+            .Order(ProjectOrder)
             .ToList();
 
     // ---------- タスク ----------

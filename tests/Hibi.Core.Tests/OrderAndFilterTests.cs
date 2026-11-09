@@ -97,3 +97,26 @@ public class TaskFilterTests
         Assert.True(TaskFilter.Matches(T("API修正"), "#"));
     }
 }
+
+public class ProjectListTests
+{
+    [Fact]
+    public void 大文字小文字を区別せずに並ぶ()
+    {
+        var (svc, _) = Fixture.Create();
+        svc.Add("1", "Zeta");
+        svc.Add("2", "alpha");
+        svc.Add("3", "Beta");
+        Assert.Equal(["alpha", "Beta", "Zeta"], svc.Projects());
+    }
+
+    [Fact]
+    public void 大文字小文字だけ違う名前は別のプロジェクトで大文字が先()
+    {
+        var (svc, _) = Fixture.Create();
+        svc.Add("1", "backend");
+        svc.Add("2", "Backend");
+        svc.Add("3", "backend");
+        Assert.Equal(["Backend", "backend"], svc.Projects());
+    }
+}

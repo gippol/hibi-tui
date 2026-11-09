@@ -70,6 +70,22 @@ public class ReportGeneratorTests
     }
 
     [Fact]
+    public void プロジェクトは大文字小文字を区別せずに並びその他は最後()
+    {
+        var (svc, clock) = Fixture.Create(FakeClock.At(2026, 11, 6, 9, 0));
+        var tasks = new[] { svc.Add("z", "Zeta"), svc.Add("n"), svc.Add("a", "alpha") };
+        for (var i = 0; i < tasks.Length; i++)
+            Work(svc, clock, tasks[i], FakeClock.At(2026, 11, 6, 9 + i, 0), TimeSpan.FromMinutes(10));
+
+        var md = ReportGenerator.Generate(svc, new DateOnly(2026, 11, 6));
+
+        var alpha = md.IndexOf("### alpha", StringComparison.Ordinal);
+        var zeta = md.IndexOf("### Zeta", StringComparison.Ordinal);
+        var other = md.IndexOf("### その他", StringComparison.Ordinal);
+        Assert.True(alpha >= 0 && alpha < zeta && zeta < other, md);
+    }
+
+    [Fact]
     public void 空の欄はなしと書く()
     {
         var (svc, _) = Fixture.Create();

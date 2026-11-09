@@ -157,7 +157,7 @@ public static class ReportGenerator
 
     /// <summary>プロジェクト名の順。プロジェクトなし（null）は最後。</summary>
     private static IEnumerable<string?> OrderProjects(IEnumerable<string?> projects) =>
-        projects.OrderBy(p => p is null ? 1 : 0).ThenBy(p => p, StringComparer.Ordinal);
+        projects.OrderBy(p => p is null ? 1 : 0).ThenBy(p => p, TaskService.ProjectOrder);
 
     private static void AppendGrouped(StringBuilder sb, IReadOnlyList<TaskItem> tasks,
         Func<TaskItem, TimeSpan> duration, Func<TaskItem, TimeSpan> cumulative,

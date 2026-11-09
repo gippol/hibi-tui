@@ -101,7 +101,7 @@ internal static class Dialogs
                 X = 14,
                 Y = 3,
                 Width = Dim.Fill(1),
-                Text = projects.Count > 0 ? "↓: 既存から選ぶ（入力中の文字で絞り込み）" : "（新しいプロジェクト名を入力。必須）",
+                Text = projects.Count > 0 ? "↓: 既存から選ぶ（入力中の文字で絞り込み）" : "（新しいプロジェクト名を入力。空でもOK）",
             };
             projectField.KeyDown += (_, key) =>
             {
