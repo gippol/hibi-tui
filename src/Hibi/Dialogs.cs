@@ -182,7 +182,9 @@ internal static class Dialogs
         {
             Title = "プロジェクトを選ぶ",
             Width = Dim.Percent(50),
-            Height = Math.Min(candidates.Count, 15) + 5,
+            // 枠2 + ボタン(影込み)2 + ダイアログの影1 + 説明ラベル1 = 約6行がリスト以外に使われる。
+            // 足りないとリストの高さが0になり何も出ないので、1行余裕を持たせる
+            Height = Math.Min(candidates.Count, 15) + 7,
         };
         var list = new ListView { X = 0, Y = 0, Width = Dim.Fill(), Height = Dim.Fill(1) };
         list.SetSource(new ObservableCollection<string>(candidates));
