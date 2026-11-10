@@ -80,10 +80,11 @@ exe を配るときは、同じフォルダにできる `LICENSE` と `THIRD-PAR
 | 月報 | `%USERPROFILE%\Documents\hibi\reports\YYYY-MM.md`（日報と同じフォルダ） |
 | 週報 | `%USERPROFILE%\Documents\hibi\reports\YYYY-Www.md`（ISO 週番号。例: `2026-W45.md`） |
 
-tasks.json は今 `schemaVersion: 4`。
+tasks.json は今 `schemaVersion: 5`。
 - v2: 並び順 `order` を追加。v1 のファイルは読み込むときに作成順で並び順を振る
 - v3: `updatedAt`（最後に手で変えた日時）/ `onHold`（手で保留）/ `due`（期限）/ `priority`（`high` / `normal` / `low`）を追加。v2 以前のファイルは既定値（なし・`false`・なし・`normal`）で読む
 - v4: 日ごとの記録に `tomorrowChosen`（明日の予定を選んだか）を追加。v3 以前のファイルは、明日の予定が空でない日だけ選んだことにして読む
+- v5: `tomorrowChosen` をやめ、選んでいない日は `tomorrowTaskIds` を `null` にする。v4 以前のファイルは、選んだ印がある日・予定が空でない日・所感もない日（日報を出した日）を選んだことにして読む
 
 古い形のファイルは、次に保存したときに今の形で書き直す。新しい形になったファイルは古い exe では開けない（バックアップは元の形のまま残る）。
 

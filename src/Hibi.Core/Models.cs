@@ -9,8 +9,9 @@ public sealed class TaskData
     /// 2: TaskItem.Order を追加。
     /// 3: TaskItem.UpdatedAt / OnHold / Due / Priority を追加（どれも省略時は既定値）。
     /// 4: DayRecord.TomorrowChosen を追加。
+    /// 5: TomorrowChosen をやめ、DayRecord.TomorrowTaskIds が null なら「選んでいない」にした。
     /// </summary>
-    public const int CurrentSchemaVersion = 4;
+    public const int CurrentSchemaVersion = 5;
 
     public int SchemaVersion { get; set; } = CurrentSchemaVersion;
     public List<TaskItem> Tasks { get; set; } = [];
@@ -74,13 +75,16 @@ public sealed class WorkLog
 public sealed class DayRecord
 {
     public string? Note { get; set; }
-    public List<Guid> TomorrowTaskIds { get; set; } = [];
 
     /// <summary>
-    /// この日に明日の予定を選んだか（日報を出力したか）。<see cref="TomorrowTaskIds"/> が空でも、
-    /// 「何も選ばなかった」なら true。所感だけ書いた日は false。
+    /// この日に選んだ明日の予定（日報を出力したときに選ぶ）。null なら選んでいない（所感だけ書いた日など）、
+    /// 空なら「何も選ばなかった」。
     /// </summary>
-    public bool TomorrowChosen { get; set; }
+    public List<Guid>? TomorrowTaskIds { get; set; }
+
+    /// <summary>schemaVersion 4 の tomorrowChosen。読み込んで移行するためだけに持つ。</summary>
+    [JsonInclude, JsonPropertyName("tomorrowChosen"), JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    internal bool? LegacyTomorrowChosen { get; set; }
 }
 
 /// <summary>優先度。JSON には小文字の名前で書く。</summary>

@@ -178,7 +178,7 @@ public sealed class TaskService(TaskData data, BusinessDayCalendar calendar, Tim
         var task = Get(id);
         Data.Tasks.Remove(task);
         foreach (var day in Data.Days.Values)
-            day.TomorrowTaskIds.Remove(id);
+            day.TomorrowTaskIds?.Remove(id);
         OnChanged();
     }
 
@@ -348,7 +348,7 @@ public sealed class TaskService(TaskData data, BusinessDayCalendar calendar, Tim
         var today = BusinessDayCalendar.Key(Today);
         // キーは yyyy-MM-dd なので文字列の順 = 日付の順
         var ids = Data.Days
-            .Where(kv => string.CompareOrdinal(kv.Key, today) < 0 && kv.Value.TomorrowChosen)
+            .Where(kv => string.CompareOrdinal(kv.Key, today) < 0 && kv.Value.TomorrowTaskIds is not null)
             .OrderByDescending(kv => kv.Key, StringComparer.Ordinal)
             .Select(kv => kv.Value.TomorrowTaskIds)
             .FirstOrDefault() ?? [];
@@ -361,11 +361,11 @@ public sealed class TaskService(TaskData data, BusinessDayCalendar calendar, Tim
         OnChanged();
     }
 
-    public void SetTomorrow(DateOnly day, IEnumerable<Guid> taskIds)
+    /// <summary>明日の予定を決める。null なら「選んでいない」に戻す。</summary>
+    public void SetTomorrow(DateOnly day, IEnumerable<Guid>? taskIds)
     {
         var record = GetOrCreateDay(day);
-        record.TomorrowTaskIds = taskIds.Distinct().ToList();
-        record.TomorrowChosen = true;
+        record.TomorrowTaskIds = taskIds?.Distinct().ToList();
         OnChanged();
     }
 

@@ -101,11 +101,19 @@ public sealed class TaskStore(string dataDirectory)
             var i = 0;
             foreach (var t in data.Tasks.OrderBy(t => t.CreatedAt)) t.Order = i++;
         }
-        if (data.SchemaVersion < 4)
+        if (data.SchemaVersion < 5)
         {
-            // 3 → 4: 選んだかの印はなかったので、予定が空でない日だけ選んだことにする
-            // （何も選ばずに出力した日は区別できないので、選んでいない扱い）
-            foreach (var day in data.Days.Values) day.TomorrowChosen = day.TomorrowTaskIds.Count > 0;
+            // 〜4 → 5: 選んでいない日は予定を null にする。選んだと見なすのは
+            // - v4 で選んだ印がある日
+            // - 予定が空でない日
+            // - 所感もない日（記録ができるのは所感を書いたときか日報を出力したときだけなので、日報を出力した日）
+            // 所感があって予定が空の日だけは区別できないので、選んでいない扱い。
+            foreach (var day in data.Days.Values)
+            {
+                var chosen = day.LegacyTomorrowChosen == true || day.TomorrowTaskIds is { Count: > 0 } || day.Note is null;
+                day.TomorrowTaskIds = chosen ? day.TomorrowTaskIds ?? [] : null;
+                day.LegacyTomorrowChosen = null;
+            }
         }
         data.SchemaVersion = TaskData.CurrentSchemaVersion;
     }

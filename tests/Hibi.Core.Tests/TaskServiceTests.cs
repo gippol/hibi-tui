@@ -191,6 +191,6 @@ public class TaskServiceTests
 
         svc.Delete(a.Id);
 
-        Assert.Empty(svc.GetDay(svc.Today)!.TomorrowTaskIds);
+        Assert.Empty(svc.GetDay(svc.Today)!.TomorrowTaskIds!);
     }
 }
