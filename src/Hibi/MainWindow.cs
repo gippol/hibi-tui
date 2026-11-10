@@ -287,7 +287,7 @@ internal sealed class MainWindow : Window
             : key == Key.W ? OutputWeeklyReport
             : key == Key.H ? () => _showStale = !_showStale
             : key == Key.P ? ToggleHold
-            : key == Key.Q ? () => _app.RequestStop()
+            : key == Key.Q ? ConfirmQuit
             : null;
         if (action is null) return false;
 
@@ -316,6 +316,20 @@ internal sealed class MainWindow : Window
         Refresh();
         if (_rowTasks.IndexOf(t) is var i and >= 0) _list.Value = i; // 絞り込みで見えないときは選択を動かさない
     }
+
+    private void ConfirmQuit()
+    {
+        var running = _service.Running is { } r ? $"\n「{r.Task.Title}」のタイマーは動いたままです。" : "";
+        if (Dialogs.Confirm(_app, "終了", $"hibi を終了しますか？{running}", "終了"))
+            _app.RequestStop();
+    }
+
+    /// <summary>
+    /// メイン画面では Esc で終了させない（Terminal.Gui の既定は Esc = 終了）。
+    /// ダイアログを閉じた直後の Esc（日本語入力の取り消しなど）で、うっかり終わってしまうため。
+    /// 絞り込みの解除は一覧のキー操作（<see cref="HandleKey"/>）で先に処理している。
+    /// </summary>
+    protected override bool OnKeyDown(Key key) => key == Key.Esc || base.OnKeyDown(key);
 
     private void AskFilter()
     {
