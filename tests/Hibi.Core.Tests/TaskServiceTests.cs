@@ -157,6 +157,32 @@ public class TaskServiceTests
     }
 
     [Fact]
+    public void 触っていない記録は同じ分のものでも未来のものでも保存を止めない()
+    {
+        var (svc, _) = Fixture.Create(FakeClock.At(2026, 11, 6, 12, 0));
+        var a = svc.Add("A");
+        var sameMinute = new WorkLog
+        {
+            Start = FakeClock.At(2026, 11, 6, 10, 0).AddSeconds(10),
+            End = FakeClock.At(2026, 11, 6, 10, 0).AddSeconds(40),
+        };
+        var future = new WorkLog { Start = FakeClock.At(2026, 11, 6, 11, 0), End = FakeClock.At(2026, 11, 6, 13, 0) };
+        a.WorkLogs = [sameMinute, future];
+
+        // 編集画面の内容をそのまま、1行だけ足して保存する
+        var text = WorkLogText.Format(a.WorkLogs) + "2026-11-06 08:00 - 09:00\n";
+        svc.ReplaceWorkLogs(a.Id, WorkLogText.Parse(text, _ => FakeClock.Jst));
+
+        Assert.Equal(3, a.WorkLogs.Count);
+        Assert.Same(sameMinute, a.WorkLogs[1]); // 秒も残る
+        Assert.Same(future, a.WorkLogs[2]);
+
+        // 書き換えた行は検証される
+        Assert.Throws<ArgumentException>(() => svc.ReplaceWorkLogs(a.Id,
+            WorkLogText.Parse("2026-11-06 10:05 - 10:05\n", _ => FakeClock.Jst)));
+    }
+
+    [Fact]
     public void 削除すると明日の予定からも消える()
     {
         var (svc, _) = Fixture.Create();

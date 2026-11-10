@@ -7,7 +7,7 @@ namespace Hibi.Core;
 /// <summary>
 /// 作業記録をテキストで編集するための変換。1行1記録:
 /// <code>
-/// 2026-11-06 10:00 - 12:30          （終了が開始より前の時刻なら翌日扱い）
+/// 2026-11-06 10:00 - 12:30          （終了が開始より前の時刻なら翌日扱い。12時間まで）
 /// 2026-11-06 23:00 - 2026-11-07 01:00
 /// 2026-11-06 13:00 -                （計測中）
 /// </code>
@@ -16,6 +16,9 @@ namespace Hibi.Core;
 public static partial class WorkLogText
 {
     private const string DateTimeFormat = "yyyy-MM-dd HH:mm";
+
+    /// <summary>終了日を書かずに日をまたげる長さの上限。</summary>
+    public static readonly TimeSpan MaxImplicitOvernight = TimeSpan.FromHours(12);
 
     public static string Format(IEnumerable<WorkLog> logs)
     {
@@ -56,7 +59,15 @@ public static partial class WorkLogText
                 else
                 {
                     var e = start.Date + ParseTime(m.Groups["et"].Value, lineNo);
-                    end = e < start ? e.AddDays(1) : e;
+                    if (e < start)
+                    {
+                        // 日付なしで日をまたげるのは短い夜作業だけ。長くなるなら打ち間違いとみなす
+                        e = e.AddDays(1);
+                        if (e - start > MaxImplicitOvernight)
+                            throw new FormatException(
+                                $"{lineNo}行目の終了時刻が開始時刻より前です（日をまたぐなら終了日も書いてください）: {line}");
+                    }
+                    end = e;
                 }
             }
 

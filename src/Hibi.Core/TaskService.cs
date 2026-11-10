@@ -294,18 +294,44 @@ public sealed class TaskService(TaskData data, BusinessDayCalendar calendar, Tim
             if (Running is { } r && r.Task != task)
                 throw new ArgumentException($"「{r.Task.Title}」が計測中です。先に止めてください。");
         }
+        // 編集画面は分単位でしか見せないので、触っていない行は元の記録（秒・オフセット付き）に戻し、検証もしない。
+        // そうしないと同じ分に始まって終わった記録や、時計の都合で未来になった記録があるだけで保存できなくなる。
+        var untouched = task.WorkLogs.ToList();
+        var result = new List<WorkLog>(logs.Count);
         foreach (var l in logs)
         {
-            if (l.End is { } e && e <= l.Start)
-                throw new ArgumentException($"終了時刻が開始時刻以前の記録があります: {l.Start:MM-dd HH:mm}");
+            var original = untouched.FirstOrDefault(o => SameMinute(o.Start, l.Start) && SameMinute(o.End, l.End));
+            if (original is not null)
+            {
+                untouched.Remove(original);
+                result.Add(original);
+                continue;
+            }
             if (l.Start > Now)
                 throw new ArgumentException($"未来の開始時刻は指定できません: {l.Start:MM-dd HH:mm}");
-            if (l.End is { } fe && fe > Now)
-                throw new ArgumentException($"未来の終了時刻は指定できません: {fe:MM-dd HH:mm}");
+            if (l.End is { } e)
+            {
+                if (e <= l.Start)
+                    throw new ArgumentException($"終了時刻が開始時刻以前の記録があります: {l.Start:MM-dd HH:mm}");
+                if (e > Now)
+                    throw new ArgumentException($"未来の終了時刻は指定できません: {e:MM-dd HH:mm}");
+            }
+            result.Add(l);
         }
-        task.WorkLogs = logs.OrderBy(l => l.Start).ToList();
+        task.WorkLogs = result.OrderBy(l => l.Start).ToList();
         OnChanged();
     }
+
+    /// <summary>画面に出る時刻（その記録のオフセットでの壁時計、分まで）が同じか。</summary>
+    private static bool SameMinute(DateTimeOffset? a, DateTimeOffset? b) =>
+        (a, b) switch
+        {
+            (null, null) => true,
+            ({ } x, { } y) => TruncateToMinute(x.DateTime) == TruncateToMinute(y.DateTime),
+            _ => false,
+        };
+
+    private static DateTime TruncateToMinute(DateTime d) => d.AddTicks(-(d.Ticks % TimeSpan.TicksPerMinute));
 
     // ---------- 業務日ごとの記録 ----------
 

@@ -34,6 +34,7 @@ public class WorkLogTextTests
     [InlineData("2026-11-06 10:00")]
     [InlineData("2026-13-06 10:00 - 11:00")]
     [InlineData("2026-11-06 10:00 - 25:00")]
+    [InlineData("2026-11-06 10:00 - 9:30")] // 翌日扱いだと23.5時間になる打ち間違い
     public void 不正な行は行番号付きで例外(string line)
     {
         var ex = Assert.Throws<FormatException>(() => WorkLogText.Parse("\n" + line, Jst));
