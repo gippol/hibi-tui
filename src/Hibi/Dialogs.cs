@@ -11,6 +11,8 @@ using Terminal.Gui.Views;
 
 namespace Hibi;
 
+internal sealed record ReportInput(List<Guid> Tomorrow, string Note);
+
 internal sealed record TaskInput(string Title, string? Project, string? Memo, DateOnly? Due, TaskPriority Priority);
 
 /// <summary>各種ダイアログ（要件 5.3）。</summary>
@@ -336,27 +338,28 @@ internal static class Dialogs
         }
     }
 
-    // ---------- 明日の予定（F-R-02〜04） ----------
+    // ---------- 日報の出力: 明日の予定と所感（F-R-02〜04） ----------
 
-    /// <summary>明日の予定を選ぶ。キャンセルなら null。</summary>
-    public static List<Guid>? ChooseTomorrow(IApplication app, TaskService service, DateOnly day)
+    /// <summary>明日の予定を選び、所感を見直す。キャンセルなら null。</summary>
+    public static ReportInput? PrepareReport(IApplication app, TaskService service, DateOnly day)
     {
         var tasks = service.OpenTasks().ToList();
-        var chosen = new HashSet<Guid>(service.GetDay(day)?.TomorrowTaskIds ?? []);
+        var record = service.GetDay(day);
+        var chosen = new HashSet<Guid>(record?.TomorrowTaskIds ?? []);
         var rows = new ObservableCollection<string>();
 
         using var d = new Dialog
         {
-            Title = $"日報を出力（{BusinessDayCalendar.Key(day)}）: 明日の予定を選ぶ",
+            Title = $"日報を出力（{BusinessDayCalendar.Key(day)}）",
             Width = Dim.Percent(80),
-            Height = Dim.Percent(80),
+            Height = Dim.Percent(85),
         };
         var list = new ShortcutListView
         {
             X = 0,
-            Y = 2,
+            Y = 3,
             Width = Dim.Fill(),
-            Height = Dim.Fill(),
+            Height = Dim.Percent(50),
             ShowMarks = true,
             MarkMultiple = true,
         };
@@ -367,7 +370,21 @@ internal static class Dialogs
             return true;
         };
         list.SetSource(rows);
-        d.Add(new Label { X = 0, Y = 0, Text = "Space: 選ぶ/外す  a: タスクを追加  Ctrl+S: 出力  Esc: キャンセル" }, list);
+        var noteLabel = new Label { X = 0, Y = Pos.Bottom(list) + 1, Text = "所感" };
+        var noteView = new TextView
+        {
+            X = 0,
+            Y = Pos.Bottom(noteLabel),
+            Width = Dim.Fill(),
+            Height = Dim.Fill(),
+            Text = record?.Note ?? "",
+            TabKeyAddsTab = false,
+        };
+        d.Add(
+            new Label { X = 0, Y = 0, Text = "Space: 選ぶ/外す  a: タスクを追加  Tab: 予定/所感を切り替え" },
+            new Label { X = 0, Y = 1, Text = "Ctrl+S: 出力  Esc: キャンセル" },
+            new Label { X = 0, Y = 2, Text = "明日の予定" },
+            list, noteLabel, noteView);
 
         void Reload()
         {
@@ -403,6 +420,6 @@ internal static class Dialogs
 
         Collect();
         // 並びは一覧の順
-        return tasks.Where(t => chosen.Contains(t.Id)).Select(t => t.Id).ToList();
+        return new ReportInput(tasks.Where(t => chosen.Contains(t.Id)).Select(t => t.Id).ToList(), noteView.Text);
     }
 }

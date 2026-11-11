@@ -411,10 +411,12 @@ internal sealed class MainWindow : Window
 
     private void OutputReport(DateOnly day)
     {
-        var tomorrow = Dialogs.ChooseTomorrow(_app, _service, day);
-        if (tomorrow is null) return;
-        var previous = _service.GetDay(day)?.TomorrowTaskIds?.ToList();
-        _service.SetTomorrow(day, tomorrow);
+        if (Dialogs.PrepareReport(_app, _service, day) is not { } input) return;
+        var previous = _service.GetDay(day);
+        var previousTomorrow = previous?.TomorrowTaskIds?.ToList();
+        var previousNote = previous?.Note;
+        _service.SetTomorrow(day, input.Tomorrow);
+        _service.SetNote(day, input.Note);
 
         var markdown = ReportGenerator.Generate(_service, day);
         // ファイルに書けなくても、貼り付けには使えるように先にコピーしておく。
@@ -427,8 +429,12 @@ internal sealed class MainWindow : Window
         }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
         {
-            // ファイルにもクリップボードにも出せなかったなら日報は出ていないので、選んだ予定も元に戻す。
-            if (!copied) _service.SetTomorrow(day, previous);
+            // ファイルにもクリップボードにも出せなかったなら日報は出ていないので、選んだ予定と所感も元に戻す。
+            if (!copied)
+            {
+                _service.SetTomorrow(day, previousTomorrow);
+                _service.SetNote(day, previousNote);
+            }
             Dialogs.Error(_app, $"日報を保存できませんでした: {ex.Message}\n{copyNote}");
         }
     }
