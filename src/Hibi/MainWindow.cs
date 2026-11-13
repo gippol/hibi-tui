@@ -69,6 +69,8 @@ internal sealed class MainWindow : Window
             Y = 0,
             Width = Dim.Fill(),
             Height = Dim.Fill(2),
+            // 詳細は見るだけ。FrameView は既定でフォーカスを取り（TabGroup）、クリックで移ると矢印キーで一覧に戻れないので取らせない
+            CanFocus = false,
         };
         _detail = new Label { Width = Dim.Fill(), Height = Dim.Fill() };
         detailFrame.Add(_detail);
