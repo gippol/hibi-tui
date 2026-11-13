@@ -209,6 +209,33 @@ public sealed class TaskService(TaskData data, BusinessDayCalendar calendar, Tim
         return true;
     }
 
+    /// <summary>
+    /// 未完了タスクをプロジェクトごとにまとめる。プロジェクトは <see cref="ProjectOrder"/> の順、プロジェクトなしは最後。
+    /// 同じプロジェクトの中は今の並びのまま。<paramref name="among"/> を渡すと、それに当たるタスクだけを
+    /// それらが今いる位置の中で並べ替え、ほかのタスクの位置は変えない。並びが変わらなければ false。
+    /// </summary>
+    public bool GroupOpenByProject(Func<TaskItem, bool>? among = null)
+    {
+        var all = InOrder(Data.Tasks).ToList();
+        var slots = new List<int>();
+        for (var i = 0; i < all.Count; i++)
+            if (!all[i].IsCompleted && among?.Invoke(all[i]) != false) slots.Add(i);
+
+        var current = slots.Select(i => all[i]).ToList();
+        var grouped = ByProject(current);
+        if (grouped.SequenceEqual(current)) return false;
+
+        for (var n = 0; n < slots.Count; n++) all[slots[n]] = grouped[n];
+        for (var n = 0; n < all.Count; n++) all[n].Order = n;
+
+        OnChanged();
+        return true;
+    }
+
+    /// <summary>プロジェクト名の順、プロジェクトなしは最後。OrderBy は安定なので、同じプロジェクトの中は今の並びが残る。</summary>
+    private static List<TaskItem> ByProject(IEnumerable<TaskItem> tasks) =>
+        tasks.OrderBy(t => t.Project is null).ThenBy(t => t.Project, ProjectOrder).ToList();
+
     public void Complete(Guid id)
     {
         var task = Get(id);
@@ -343,16 +370,60 @@ public sealed class TaskService(TaskData data, BusinessDayCalendar calendar, Tim
     /// その日に何も選ばなかった・選んだものを全部消したなら、それより前の日にはさかのぼらず予定なし。
     /// 完了したもの・消したもの・手で保留にしたものは除く。並びは選んだときの順。
     /// </summary>
-    public IReadOnlyList<TaskItem> PlannedToday()
+    public IReadOnlyList<TaskItem> PlannedToday() =>
+        (PlanSource() ?? []).Select(Find).OfType<TaskItem>().Where(IsPlannedNow).ToList();
+
+    private static bool IsPlannedNow(TaskItem t) => !t.IsCompleted && !t.OnHold;
+
+    /// <summary>今日の予定のもとになる、前の業務日に選んだ id の並び（<see cref="PlannedToday"/>）。なければ null。</summary>
+    private List<Guid>? PlanSource()
     {
         var today = BusinessDayCalendar.Key(Today);
         // キーは yyyy-MM-dd なので文字列の順 = 日付の順
-        var ids = Data.Days
+        return Data.Days
             .Where(kv => string.CompareOrdinal(kv.Key, today) < 0 && kv.Value.TomorrowTaskIds is not null)
             .OrderByDescending(kv => kv.Key, StringComparer.Ordinal)
             .Select(kv => kv.Value.TomorrowTaskIds)
-            .FirstOrDefault() ?? [];
-        return ids.Select(Find).OfType<TaskItem>().Where(t => !t.IsCompleted && !t.OnHold).ToList();
+            .FirstOrDefault();
+    }
+
+    /// <summary>
+    /// 今日の予定のタスクを1つ上（-1）か下（+1）に動かす。選んだ日の記録（TomorrowTaskIds）の順を変える。
+    /// <paramref name="among"/> を渡すと、それに当たる予定の中での隣と入れ替える。動かせなければ false。
+    /// </summary>
+    public bool MovePlanned(Guid id, int delta, Func<TaskItem, bool>? among = null)
+    {
+        if (delta is not (-1 or 1)) throw new ArgumentOutOfRangeException(nameof(delta));
+        if (PlanSource() is not { } ids) return false;
+        var visible = PlannedToday().Where(t => t.Id == id || among?.Invoke(t) != false).ToList();
+        var i = visible.FindIndex(t => t.Id == id);
+        if (i < 0 || i + delta < 0 || i + delta >= visible.Count) return false;
+        var neighbor = visible[i + delta].Id;
+
+        ids.Remove(id);
+        ids.Insert(ids.IndexOf(neighbor) + (delta > 0 ? 1 : 0), id);
+        OnChanged();
+        return true;
+    }
+
+    /// <summary>
+    /// 今日の予定をプロジェクトごとにまとめる（並べ方は <see cref="GroupOpenByProject"/> と同じ）。
+    /// <paramref name="among"/> に当たらない予定や、完了・保留で今は出ていないものの位置は変えない。変わらなければ false。
+    /// </summary>
+    public bool GroupPlannedByProject(Func<TaskItem, bool>? among = null)
+    {
+        if (PlanSource() is not { } ids) return false;
+        var slots = new List<int>();
+        for (var i = 0; i < ids.Count; i++)
+            if (Find(ids[i]) is { } t && IsPlannedNow(t) && among?.Invoke(t) != false) slots.Add(i);
+
+        var current = slots.Select(i => Get(ids[i])).ToList();
+        var grouped = ByProject(current);
+        if (grouped.SequenceEqual(current)) return false;
+
+        for (var n = 0; n < slots.Count; n++) ids[slots[n]] = grouped[n].Id;
+        OnChanged();
+        return true;
     }
 
     public void SetNote(DateOnly day, string? note)

@@ -57,6 +57,65 @@ public class OrderTests
     }
 
     [Fact]
+    public void プロジェクトごとにまとめるとプロジェクト名の順でプロジェクトなしは最後()
+    {
+        var (svc, _) = Fixture.Create();
+        svc.Add("1", "web");
+        svc.Add("2");
+        svc.Add("3", "api");
+        svc.Add("4", "web");
+        svc.Add("5", "API");
+        svc.Add("6", "api");
+
+        Assert.True(svc.GroupOpenByProject());
+        // 同じプロジェクトの中は元の手の並びのまま
+        Assert.Equal(["5", "3", "6", "1", "4", "2"], Titles(svc.OpenTasks()));
+    }
+
+    [Fact]
+    public void すでにまとまっていれば変えずに通知もしない()
+    {
+        var (svc, _) = Fixture.Create();
+        svc.Add("A", "a");
+        svc.Add("B", "b");
+        svc.Add("C");
+        var changed = 0;
+        svc.Changed += () => changed++;
+
+        Assert.False(svc.GroupOpenByProject());
+        Assert.Equal(0, changed);
+    }
+
+    [Fact]
+    public void 範囲を絞るとその中だけ並べ替えてほかの位置は動かさない()
+    {
+        var (svc, _) = Fixture.Create();
+        svc.Add("A", "y");
+        svc.Add("B", "z");
+        svc.Add("C", "x");   // 見えていない
+        svc.Add("D", "x");
+
+        Assert.True(svc.GroupOpenByProject(t => t.Title != "C"));
+        // A, B, D の席に x, y, z の順で入る。C は3番目のまま
+        Assert.Equal(["D", "A", "C", "B"], Titles(svc.OpenTasks()));
+    }
+
+    [Fact]
+    public void まとめても完了したタスクの並び順とは重ならない()
+    {
+        var (svc, _) = Fixture.Create();
+        svc.Add("A", "b");
+        var done = svc.Add("B");
+        svc.Add("C", "a");
+        svc.Complete(done.Id);
+
+        svc.GroupOpenByProject();
+        svc.Uncomplete(done.Id);
+        Assert.Equal(3, svc.Data.Tasks.Select(t => t.Order).Distinct().Count());
+        Assert.Equal(["C", "B", "A"], Titles(svc.OpenTasks()));
+    }
+
+    [Fact]
     public void 完了を取り消しても並び順は重ならない()
     {
         var (svc, _) = Fixture.Create();

@@ -81,8 +81,8 @@ internal sealed class MainWindow : Window
             Y = Pos.AnchorEnd(2),
             Width = Dim.Fill(),
             Height = 2,
-            Text = "a:追加  Enter:開始/停止  d:完了/取消  e:編集  t:時間修正  x:削除  /:絞り込み  Shift+↑↓:並べ替え\n" +
-                   "n:ふり返り  r:日報出力  N/R:過去の日を選んで  w:週報出力  m:月報出力  p:保留にする/戻す  h:保留を開く/たたむ  q:終了",
+            Text = "a:追加 Enter:開始/停止 d:完了/取消 e:編集 t:時間修正 x:削除 /:絞込 Shift+↑↓:並替 s:まとめる\n" +
+                   "n:ふり返り r:日報出力 N/R:過去の日 w:週報出力 m:月報出力 p:保留/戻す h:保留を開く/たたむ q:終了",
         };
 
         Add(listFrame, detailFrame, footer);
@@ -289,6 +289,7 @@ internal sealed class MainWindow : Window
             : key == Key.W ? OutputWeeklyReport
             : key == Key.H ? () => _showStale = !_showStale
             : key == Key.P ? ToggleHold
+            : key == Key.S ? GroupByProject
             : key == Key.Q ? ConfirmQuit
             : null;
         if (action is null) return false;
@@ -342,14 +343,30 @@ internal sealed class MainWindow : Window
     }
 
     /// <summary>
-    /// 選んでいるタスクを、同じ区切り（[未完了] か [保留]）の中で見えている隣と入れ替える。
-    /// [今日の予定] の並びは日報で選んだ順なので、ここでは動かさない。
+    /// 選んでいるタスクを、同じ区切り（[今日の予定]・[未完了]・[保留]）の中で見えている隣と入れ替える。
+    /// [今日の予定] は前の業務日の日報で選んだ予定の順を変える。
     /// </summary>
     private void MoveSelected(int delta)
     {
-        if (Selected is not { } t || t.IsCompleted || _plannedIds.Contains(t.Id)) return;
+        if (Selected is not { } t || t.IsCompleted) return;
+        if (_plannedIds.Contains(t.Id))
+        {
+            _service.MovePlanned(t.Id, delta, IsShown);
+            return;
+        }
         var held = IsHeld(t);
         _service.MoveOpen(t.Id, delta, o => !_plannedIds.Contains(o.Id) && IsShown(o) && IsHeld(o) == held);
+    }
+
+    /// <summary>
+    /// 今見えている未完了タスクを、区切りごとにプロジェクトでまとめる。[今日の予定] は日報で選んだ予定の順を変える。
+    /// たたんでいる [保留] は見えていないので動かさない。
+    /// </summary>
+    private void GroupByProject()
+    {
+        _service.GroupPlannedByProject(IsShown);
+        var heldShown = _showStale || _filter is not null;
+        _service.GroupOpenByProject(t => !_plannedIds.Contains(t.Id) && IsShown(t) && (heldShown || !IsHeld(t)));
     }
 
     /// <summary>保留（手で・自動どちらも）なら戻し、そうでなければ手で保留にする。</summary>
