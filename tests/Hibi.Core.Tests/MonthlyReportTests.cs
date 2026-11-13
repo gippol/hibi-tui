@@ -88,7 +88,7 @@ public class MonthlyReportTests
     }
 
     [Fact]
-    public void 空の月はなしと書く()
+    public void 空の月はなしと書きふり返りの欄は出さない()
     {
         var (svc, _) = Fixture.Create();
 
@@ -111,9 +111,6 @@ public class MonthlyReportTests
             なし
 
             ## 日別
-            なし
-
-            ## 所感
             なし
 
             """.ReplaceLineEndings("\n"),

@@ -94,7 +94,7 @@ public sealed class SchemaV5StorageTests : IDisposable
         var json = File.ReadAllText(store.DataPath);
         var days = store.Load().Days;
 
-        Assert.Contains("\"schemaVersion\": 5", json);
+        Assert.Contains($"\"schemaVersion\": {TaskData.CurrentSchemaVersion}", json);
         Assert.DoesNotContain("tomorrowChosen", json);
         Assert.Empty(days["2026-11-05"].TomorrowTaskIds!);
         Assert.Null(days["2026-11-06"].TomorrowTaskIds);
@@ -115,7 +115,7 @@ public sealed class SchemaV5StorageTests : IDisposable
             }
             """);
 
-        Assert.Equal(5, data.SchemaVersion);
+        Assert.Equal(TaskData.CurrentSchemaVersion, data.SchemaVersion);
         Assert.Single(data.Days["2026-11-04"].TomorrowTaskIds!);
         Assert.Empty(data.Days["2026-11-05"].TomorrowTaskIds!); // 何も選ばずに出力した日
         Assert.Null(data.Days["2026-11-06"].TomorrowTaskIds);

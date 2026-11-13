@@ -9,6 +9,11 @@ public static class ReportGenerator
     public const string NoProject = "その他";
     private const string None = "なし";
 
+    // 手で書く欄（ふり返り）。日報・週報・月報で同じ見出しを使い、空なら欄ごと出さない。
+    private const string ProblemHeading = "課題・困ったこと";
+    private const string TryHeading = "学び・改善";
+    private const string NoteHeading = "所感";
+
     // ---------- 日報 ----------
 
     public static string Generate(TaskService service, DateOnly day)
@@ -44,13 +49,14 @@ public static class ReportGenerator
         sb.Append("\n## 進行中\n");
         AppendGrouped(sb, inProgress, t => service.DurationOn(t, day), UpToDay, Slots);
 
+        AppendText(sb, ProblemHeading, record?.Problem);
+        AppendText(sb, TryHeading, record?.Try);
+
         sb.Append("\n## 明日の予定\n");
         if (tomorrow.Count == 0) sb.Append(None).Append('\n');
         foreach (var t in tomorrow) sb.Append($"- {t.Title}\n");
 
-        sb.Append("\n## 所感\n");
-        var note = record?.Note;
-        sb.Append(string.IsNullOrWhiteSpace(note) ? None : note.ReplaceLineEndings("\n")).Append('\n');
+        AppendText(sb, NoteHeading, record?.Note);
 
         return sb.ToString();
     }
@@ -96,9 +102,10 @@ public static class ReportGenerator
             }
         var total = byDay.Values.Aggregate(TimeSpan.Zero, (acc, d) => acc + d);
 
-        var notes = service.Data.Days
-            .Select(kv => (Day: ParseKey(kv.Key), kv.Value.Note))
-            .Where(x => x.Day is { } d && d >= from && d <= to && !string.IsNullOrWhiteSpace(x.Note))
+        var days = service.Data.Days
+            .Select(kv => (Day: ParseKey(kv.Key), Record: kv.Value))
+            .Where(x => x.Day is { } d && d >= from && d <= to)
+            .Select(x => (Day: x.Day!.Value, x.Record))
             .OrderBy(x => x.Day)
             .ToList();
 
@@ -125,19 +132,37 @@ public static class ReportGenerator
         foreach (var (day, d) in byDay)
             sb.Append($"- {Day(day, full: false)} — {DurationFormat.Short(d)}\n");
 
-        sb.Append("\n## 所感\n");
-        if (notes.Count == 0) sb.Append(None).Append('\n');
-        for (var i = 0; i < notes.Count; i++)
-        {
-            if (i > 0) sb.Append('\n');
-            sb.Append($"### {Day(notes[i].Day!.Value, full: false)}\n");
-            sb.Append(notes[i].Note!.ReplaceLineEndings("\n")).Append('\n');
-        }
+        AppendDailyTexts(sb, ProblemHeading, days, r => r.Problem);
+        AppendDailyTexts(sb, TryHeading, days, r => r.Try);
+        AppendDailyTexts(sb, NoteHeading, days, r => r.Note);
 
         return sb.ToString();
     }
 
     // ---------- helpers ----------
+
+    /// <summary>手で書いた欄を `## 見出し` の下に出す。空なら欄ごと出さない。</summary>
+    private static void AppendText(StringBuilder sb, string heading, string? text)
+    {
+        if (string.IsNullOrWhiteSpace(text)) return;
+        sb.Append($"\n## {heading}\n");
+        sb.Append(text.ReplaceLineEndings("\n")).Append('\n');
+    }
+
+    /// <summary>期間の各日に手で書いた欄を、日ごとに `### MM-dd（曜）` を付けて出す。どの日も空なら欄ごと出さない。</summary>
+    private static void AppendDailyTexts(StringBuilder sb, string heading,
+        IReadOnlyList<(DateOnly Day, DayRecord Record)> days, Func<DayRecord, string?> text)
+    {
+        var written = days.Where(x => !string.IsNullOrWhiteSpace(text(x.Record))).ToList();
+        if (written.Count == 0) return;
+        sb.Append($"\n## {heading}\n");
+        for (var i = 0; i < written.Count; i++)
+        {
+            if (i > 0) sb.Append('\n');
+            sb.Append($"### {Day(written[i].Day, full: false)}\n");
+            sb.Append(text(written[i].Record)!.ReplaceLineEndings("\n")).Append('\n');
+        }
+    }
 
     private static string Day(DateOnly d, bool full) =>
         $"{d.ToString(full ? "yyyy-MM-dd" : "MM-dd", CultureInfo.InvariantCulture)}（{BusinessDayCalendar.JaWeekday(d)}）";

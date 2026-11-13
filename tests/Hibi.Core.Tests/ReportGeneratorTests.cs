@@ -86,7 +86,7 @@ public class ReportGeneratorTests
     }
 
     [Fact]
-    public void 空の欄はなしと書く()
+    public void 空の欄はなしと書きふり返りの欄は出さない()
     {
         var (svc, _) = Fixture.Create();
 
@@ -105,9 +105,6 @@ public class ReportGeneratorTests
             なし
 
             ## 明日の予定
-            なし
-
-            ## 所感
             なし
 
             """.ReplaceLineEndings("\n"),

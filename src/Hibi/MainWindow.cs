@@ -82,7 +82,7 @@ internal sealed class MainWindow : Window
             Width = Dim.Fill(),
             Height = 2,
             Text = "a:追加  Enter:開始/停止  d:完了/取消  e:編集  t:時間修正  x:削除  /:絞り込み  Shift+↑↓:並べ替え\n" +
-                   "n:所感  r:日報出力  N/R:過去の日を選んで  w:週報出力  m:月報出力  p:保留にする/戻す  h:保留を開く/たたむ  q:終了",
+                   "n:ふり返り  r:日報出力  N/R:過去の日を選んで  w:週報出力  m:月報出力  p:保留にする/戻す  h:保留を開く/たたむ  q:終了",
         };
 
         Add(listFrame, detailFrame, footer);
@@ -282,7 +282,7 @@ internal sealed class MainWindow : Window
             : key == Key.T ? EditWorkLogs
             : key == Key.X ? DeleteTask
             : key == Key.N ? () => EditNote(_service.Today)
-            : key == Key.N.WithShift ? () => WithPastDay("所感を書く", EditNote)
+            : key == Key.N.WithShift ? () => WithPastDay("ふり返りを書く", EditNote)
             : key == Key.R ? () => OutputReport(_service.Today)
             : key == Key.R.WithShift ? () => WithPastDay("日報を出力", OutputReport)
             : key == Key.M ? OutputMonthlyReport
@@ -407,8 +407,8 @@ internal sealed class MainWindow : Window
 
     private void EditNote(DateOnly day)
     {
-        if (Dialogs.EditText(_app, $"所感 {BusinessDayCalendar.Key(day)}", _service.GetDay(day)?.Note) is { } note)
-            _service.SetNote(day, note);
+        if (Dialogs.EditNotes(_app, $"ふり返り {BusinessDayCalendar.Key(day)}", _service.GetNotes(day)) is { } notes)
+            _service.SetNotes(day, notes);
     }
 
     private void OutputReport(DateOnly day)
@@ -416,9 +416,9 @@ internal sealed class MainWindow : Window
         if (Dialogs.PrepareReport(_app, _service, day) is not { } input) return;
         var previous = _service.GetDay(day);
         var previousTomorrow = previous?.TomorrowTaskIds?.ToList();
-        var previousNote = previous?.Note;
+        var previousNotes = _service.GetNotes(day);
         _service.SetTomorrow(day, input.Tomorrow);
-        _service.SetNote(day, input.Note);
+        _service.SetNotes(day, input.Notes);
 
         var markdown = ReportGenerator.Generate(_service, day);
         // ファイルに書けなくても、貼り付けには使えるように先にコピーしておく。
@@ -431,11 +431,11 @@ internal sealed class MainWindow : Window
         }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
         {
-            // ファイルにもクリップボードにも出せなかったなら日報は出ていないので、選んだ予定と所感も元に戻す。
+            // ファイルにもクリップボードにも出せなかったなら日報は出ていないので、選んだ予定とふり返りも元に戻す。
             if (!copied)
             {
                 _service.SetTomorrow(day, previousTomorrow);
-                _service.SetNote(day, previousNote);
+                _service.SetNotes(day, previousNotes);
             }
             Dialogs.Error(_app, $"日報を保存できませんでした: {ex.Message}\n{copyNote}");
         }

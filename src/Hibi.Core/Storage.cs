@@ -115,6 +115,7 @@ public sealed class TaskStore(string dataDirectory)
                 day.LegacyTomorrowChosen = null;
             }
         }
+        // 5 → 6: problem / try は省略時 null で読めるので直すものはない
         data.SchemaVersion = TaskData.CurrentSchemaVersion;
     }
 

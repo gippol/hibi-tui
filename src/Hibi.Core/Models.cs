@@ -10,8 +10,9 @@ public sealed class TaskData
     /// 3: TaskItem.UpdatedAt / OnHold / Due / Priority を追加（どれも省略時は既定値）。
     /// 4: DayRecord.TomorrowChosen を追加。
     /// 5: TomorrowChosen をやめ、DayRecord.TomorrowTaskIds が null なら「選んでいない」にした。
+    /// 6: DayRecord.Problem / Try を追加（どちらも省略時は null）。
     /// </summary>
-    public const int CurrentSchemaVersion = 5;
+    public const int CurrentSchemaVersion = 6;
 
     public int SchemaVersion { get; set; } = CurrentSchemaVersion;
     public List<TaskItem> Tasks { get; set; } = [];
@@ -74,6 +75,13 @@ public sealed class WorkLog
 
 public sealed class DayRecord
 {
+    /// <summary>課題・困ったこと（Problem）。</summary>
+    public string? Problem { get; set; }
+
+    /// <summary>学び・改善（Try）。</summary>
+    public string? Try { get; set; }
+
+    /// <summary>所感（自由に書く欄）。</summary>
     public string? Note { get; set; }
 
     /// <summary>
@@ -85,6 +93,12 @@ public sealed class DayRecord
     /// <summary>schemaVersion 4 の tomorrowChosen。読み込んで移行するためだけに持つ。</summary>
     [JsonInclude, JsonPropertyName("tomorrowChosen"), JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
     internal bool? LegacyTomorrowChosen { get; set; }
+}
+
+/// <summary>業務日ごとに手で書く3つの欄（ふり返り）。空の欄は null。</summary>
+public sealed record DayNotes(string? Problem, string? Try, string? Note)
+{
+    public static readonly DayNotes Empty = new(null, null, null);
 }
 
 /// <summary>優先度。JSON には小文字の名前で書く。</summary>

@@ -361,6 +361,20 @@ public sealed class TaskService(TaskData data, BusinessDayCalendar calendar, Tim
         OnChanged();
     }
 
+    /// <summary>その日のふり返り（課題・学び・所感）。記録がなければ全部 null。</summary>
+    public DayNotes GetNotes(DateOnly day) =>
+        GetDay(day) is { } r ? new DayNotes(r.Problem, r.Try, r.Note) : DayNotes.Empty;
+
+    /// <summary>ふり返りの3つの欄をまとめて書き換える。空白だけの欄は null にする。</summary>
+    public void SetNotes(DateOnly day, DayNotes notes)
+    {
+        var record = GetOrCreateDay(day);
+        record.Problem = Normalize(notes.Problem);
+        record.Try = Normalize(notes.Try);
+        record.Note = Normalize(notes.Note);
+        OnChanged();
+    }
+
     /// <summary>明日の予定を決める。null なら「選んでいない」に戻す。</summary>
     public void SetTomorrow(DateOnly day, IEnumerable<Guid>? taskIds)
     {

@@ -11,7 +11,7 @@ using Terminal.Gui.Views;
 
 namespace Hibi;
 
-internal sealed record ReportInput(List<Guid> Tomorrow, string Note);
+internal sealed record ReportInput(List<Guid> Tomorrow, DayNotes Notes);
 
 internal sealed record TaskInput(string Title, string? Project, string? Memo, DateOnly? Due, TaskPriority Priority);
 
@@ -225,7 +225,7 @@ internal static class Dialogs
         }
     }
 
-    // ---------- 複数行テキスト（所感など） ----------
+    // ---------- 複数行テキスト（作業記録など） ----------
 
     public static string? EditText(IApplication app, string title, string? text)
     {
@@ -242,6 +242,51 @@ internal static class Dialogs
         d.Add(view, new Label { X = 0, Y = Pos.AnchorEnd(1), Text = "Ctrl+S: 保存  Esc: キャンセル" });
         view.SetFocus();
         return Show(app, d, ["保存", Cancel]) == 0 ? view.Text : null;
+    }
+
+    // ---------- ふり返り（課題・学び・所感） ----------
+
+    /// <summary>ふり返りの3つの欄を書いてもらう。キャンセルなら null。</summary>
+    public static DayNotes? EditNotes(IApplication app, string title, DayNotes notes)
+    {
+        using var d = new Dialog { Title = title, Width = Dim.Percent(85), Height = Dim.Percent(85) };
+        var fields = AddNoteFields(d, 0, notes, Dim.Percent(10), Dim.Fill(1));
+        d.Add(new Label { X = 0, Y = Pos.AnchorEnd(1), Text = "Tab: 欄を切り替え  Ctrl+S: 保存  Esc: キャンセル" });
+        fields.Problem.SetFocus();
+        return Show(app, d, ["保存", Cancel]) == 0 ? fields.Value : null;
+    }
+
+    private sealed record NoteFields(TextView Problem, TextView Try, TextView Note)
+    {
+        public DayNotes Value => new(Problem.Text, Try.Text, Note.Text);
+    }
+
+    /// <summary>
+    /// 課題・学び・所感の欄を <paramref name="top"/> から縦に並べる。
+    /// 課題と学びの高さは <paramref name="height"/>、所感は <paramref name="lastHeight"/>（残りを埋める）。
+    /// </summary>
+    private static NoteFields AddNoteFields(View parent, Pos top, DayNotes notes, Dim height, Dim lastHeight)
+    {
+        TextView Field(string label, Pos y, string? text, Dim h)
+        {
+            var l = new Label { X = 0, Y = y, Text = label };
+            var v = new TextView
+            {
+                X = 0,
+                Y = Pos.Bottom(l),
+                Width = Dim.Fill(),
+                Height = h,
+                Text = text ?? "",
+                TabKeyAddsTab = false,
+            };
+            parent.Add(l, v);
+            return v;
+        }
+
+        var problem = Field("課題・困ったこと（Problem）", top, notes.Problem, height);
+        var @try = Field("学び・改善（Try）", Pos.Bottom(problem), notes.Try, height);
+        var note = Field("所感", Pos.Bottom(@try), notes.Note, lastHeight);
+        return new NoteFields(problem, @try, note);
     }
 
     // ---------- 日時の入力 ----------
@@ -313,7 +358,7 @@ internal static class Dialogs
         return Show(app, d, [Ok, Cancel], field) == 0 ? field.Text : null;
     }
 
-    // ---------- 業務日の入力（過去の所感・日報） ----------
+    // ---------- 業務日の入力（過去のふり返り・日報） ----------
 
     /// <summary>業務日（yyyy-MM-dd）を入れてもらう。<paramref name="max"/> より後は受け付けない。キャンセルなら null。</summary>
     public static DateOnly? AskDay(IApplication app, string title, DateOnly initial, DateOnly max,
@@ -338,9 +383,9 @@ internal static class Dialogs
         }
     }
 
-    // ---------- 日報の出力: 明日の予定と所感（F-R-02〜04） ----------
+    // ---------- 日報の出力: 明日の予定とふり返り（F-R-02〜04, F-R-08） ----------
 
-    /// <summary>明日の予定を選び、所感を見直す。キャンセルなら null。</summary>
+    /// <summary>明日の予定を選び、ふり返り（課題・学び・所感）を見直す。キャンセルなら null。</summary>
     public static ReportInput? PrepareReport(IApplication app, TaskService service, DateOnly day)
     {
         var tasks = service.OpenTasks().ToList();
@@ -352,14 +397,14 @@ internal static class Dialogs
         {
             Title = $"日報を出力（{BusinessDayCalendar.Key(day)}）",
             Width = Dim.Percent(80),
-            Height = Dim.Percent(85),
+            Height = Dim.Percent(90),
         };
         var list = new ShortcutListView
         {
             X = 0,
             Y = 3,
             Width = Dim.Fill(),
-            Height = Dim.Percent(50),
+            Height = Dim.Percent(30),
             ShowMarks = true,
             MarkMultiple = true,
         };
@@ -370,21 +415,12 @@ internal static class Dialogs
             return true;
         };
         list.SetSource(rows);
-        var noteLabel = new Label { X = 0, Y = Pos.Bottom(list) + 1, Text = "所感" };
-        var noteView = new TextView
-        {
-            X = 0,
-            Y = Pos.Bottom(noteLabel),
-            Width = Dim.Fill(),
-            Height = Dim.Fill(),
-            Text = record?.Note ?? "",
-            TabKeyAddsTab = false,
-        };
         d.Add(
-            new Label { X = 0, Y = 0, Text = "Space: 選ぶ/外す  a: タスクを追加  Tab: 予定/所感を切り替え" },
+            new Label { X = 0, Y = 0, Text = "Space: 選ぶ/外す  a: タスクを追加  Tab: 予定/課題/学び/所感を切り替え" },
             new Label { X = 0, Y = 1, Text = "Ctrl+S: 出力  Esc: キャンセル" },
             new Label { X = 0, Y = 2, Text = "明日の予定" },
-            list, noteLabel, noteView);
+            list);
+        var fields = AddNoteFields(d, Pos.Bottom(list), service.GetNotes(day), Dim.Percent(10), Dim.Fill());
 
         void Reload()
         {
@@ -420,6 +456,6 @@ internal static class Dialogs
 
         Collect();
         // 並びは一覧の順
-        return new ReportInput(tasks.Where(t => chosen.Contains(t.Id)).Select(t => t.Id).ToList(), noteView.Text);
+        return new ReportInput(tasks.Where(t => chosen.Contains(t.Id)).Select(t => t.Id).ToList(), fields.Value);
     }
 }
