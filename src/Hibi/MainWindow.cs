@@ -24,6 +24,7 @@ internal sealed class MainWindow : Window
     private readonly Label _filterPrompt;
     private readonly TextField _filterField;
     private readonly ObservableCollection<string> _rows = [];
+    private readonly List<Span[]> _rowSpans = []; // _rows と同じ行を部分ごとの色で
     private readonly List<TaskItem?> _rowTasks = []; // 見出し行は null
 
     private DateOnly _shownDay;
@@ -61,7 +62,7 @@ internal sealed class MainWindow : Window
             Height = Dim.Fill(),
             Shortcut = HandleKey,
         };
-        _list.SetSource(_rows);
+        _list.Source = new TaskListSource(_rows, _rowSpans);
         _list.ValueChanged += (_, _) => UpdateDetail();
         listFrame.Add(_list);
 
@@ -168,6 +169,7 @@ internal sealed class MainWindow : Window
         _shownDay = _service.Today;
 
         _rows.Clear();
+        _rowSpans.Clear();
         _rowTasks.Clear();
 
         // 前の業務日の日報で選んだ「明日の予定」を上に出す。下の未完了には重ねて出さない
@@ -221,23 +223,39 @@ internal sealed class MainWindow : Window
 
     private static string OpenMark(TaskItem t) => t.IsRunning ? "▶" : t.WorkLogs.Count > 0 ? "・" : " ";
 
-    private void AddHeader(string text)
-    {
-        _rows.Add(text);
-        _rowTasks.Add(null);
-    }
+    private void AddHeader(string text) => AddRow(null, new Span(text, Tone.Header));
 
-    /// <summary>1行: 印、優先度（! 高 / ↓ 低）、タイトル、#プロジェクト、〆期限。</summary>
+    /// <summary>
+    /// 1行: 印、優先度（! 高 / ↓ 低）、タイトル、#プロジェクト、〆期限。
+    /// 色: 作業中は緑、! は黄、#プロジェクトと期限は灰色（今日は黄、期限切れは赤）、完了した行は全部暗い灰色。
+    /// </summary>
     private void AddTask(TaskItem t, string mark)
     {
-        var priority = t.Priority switch { TaskPriority.High => "!", TaskPriority.Low => "↓", _ => "" };
-        var project = t.Project is { } p ? $"  #{p}" : "";
-        var due = t.IsCompleted || t.Due is not { } d ? ""
-            : _service.IsOverdue(t) ? $"  〆{d:MM-dd} 期限切れ"
-            : d == _shownDay ? "  〆今日"
-            : $"  〆{d:MM-dd}";
-        _rows.Add($" {mark} {priority}{t.Title}{project}{due}");
-        _rowTasks.Add(t);
+        var done = t.IsCompleted;
+        Tone Or(Tone tone) => done ? Tone.Done : tone;
+
+        var main = Or(t.IsRunning ? Tone.Running : Tone.Normal);
+        var priority = t.Priority switch
+        {
+            TaskPriority.High => new Span("!", Or(Tone.High)),
+            TaskPriority.Low => new Span("↓", Or(Tone.Muted)),
+            _ => new Span(""),
+        };
+        var project = new Span(t.Project is { } p ? $"  #{p}" : "", Or(Tone.Muted));
+        var due = done || t.Due is not { } d ? new Span("")
+            : _service.IsOverdue(t) ? new Span($"  〆{d:MM-dd} 期限切れ", Tone.Overdue)
+            : d == _shownDay ? new Span("  〆今日", Tone.DueToday)
+            : new Span($"  〆{d:MM-dd}", Tone.Muted);
+
+        AddRow(t, new Span($" {mark} ", main), priority, new Span(t.Title, main), project, due);
+    }
+
+    private void AddRow(TaskItem? task, params Span[] spans)
+    {
+        // 色の情報を先に入れる: _rows を変えると一覧が描き直されるので、そのときに揃っているように
+        _rowSpans.Add(spans);
+        _rowTasks.Add(task);
+        _rows.Add(string.Concat(spans.Select(s => s.Text)));
     }
 
     private void UpdateTitle()
