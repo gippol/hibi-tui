@@ -45,9 +45,8 @@ public sealed class TaskService(TaskData data, BusinessDayCalendar calendar, Tim
             .OrderBy(t => t.CompletedAt)
             .ToList();
 
-    /// <summary>指定業務日に開始した作業記録の合計（F-W-08）。</summary>
-    public TimeSpan DurationOn(TaskItem task, DateOnly day) =>
-        Sum(task.WorkLogs.Where(l => Calendar.DayOf(l.Start) == day));
+    /// <summary>指定業務日の作業時間（F-W-08。切り替わりをまたぐ記録はその日に入る分だけ）。</summary>
+    public TimeSpan DurationOn(TaskItem task, DateOnly day) => DurationIn(task, day, day);
 
     public TimeSpan TotalDuration(TaskItem task) => Sum(task.WorkLogs);
 
@@ -83,8 +82,7 @@ public sealed class TaskService(TaskData data, BusinessDayCalendar calendar, Tim
     /// <summary>期限切れ: 未完了で、期限が今の業務日より前。</summary>
     public bool IsOverdue(TaskItem task) => !task.IsCompleted && task.Due is { } d && d < Today;
 
-    public bool WorkedOn(TaskItem task, DateOnly day) =>
-        task.WorkLogs.Any(l => Calendar.DayOf(l.Start) == day);
+    public bool WorkedOn(TaskItem task, DateOnly day) => WorkedIn(task, day, day);
 
     // ---------- 期間（月報など）。from と to はどちらも含む ----------
 
@@ -95,9 +93,32 @@ public sealed class TaskService(TaskData data, BusinessDayCalendar calendar, Tim
             .OrderBy(t => t.CompletedAt)
             .ToList();
 
-    /// <summary>期間内の業務日に開始した作業記録。</summary>
-    public IEnumerable<WorkLog> LogsIn(TaskItem task, DateOnly from, DateOnly to) =>
-        task.WorkLogs.Where(l => InRange(Calendar.DayOf(l.Start), from, to));
+    /// <summary>
+    /// 期間内の業務日に入る作業記録（F-W-08）。日の切り替わりをまたぐ記録は業務日ごとに切り分け、
+    /// 期間に入る部分だけを返す。切り分けたものは新しく作った <see cref="WorkLog"/> で、元の記録は変えない。
+    /// 計測中の記録の今の業務日の分は、終わりを null のままにする。
+    /// </summary>
+    public IEnumerable<WorkLog> LogsIn(TaskItem task, DateOnly from, DateOnly to)
+    {
+        var now = Now;
+        foreach (var l in task.WorkLogs)
+        {
+            var end = l.End ?? now;
+            if (end < l.Start) end = l.Start;
+            var day = Calendar.DayOf(l.Start);
+            var start = l.Start;
+            while (true)
+            {
+                var next = Calendar.StartOf(day.AddDays(1), l.Start.Offset);
+                var last = end <= next;
+                if (InRange(day, from, to))
+                    yield return new WorkLog { Start = start, End = last ? l.End : next };
+                if (last || day >= to) break;
+                start = next;
+                day = day.AddDays(1);
+            }
+        }
+    }
 
     public TimeSpan DurationIn(TaskItem task, DateOnly from, DateOnly to) => Sum(LogsIn(task, from, to));
 

@@ -292,13 +292,13 @@ internal sealed class MainWindow : Window
     /// <summary>
     /// 作業中はタスクのその日の合計（今までに止めた分も入れる）と、今回の計測を出す。
     /// 今回の分だけだと、止めて開き直すたびに 0 から数え直しに見えるため。
-    /// 日は今回の計測を始めた業務日（日をまたいで動かしていても数がとばないように）。
+    /// 日の切り替わりをまたいで動かしていたら、合計は今の業務日に入る分だけ（今回の分は始めてからずっと）。
     /// </summary>
     private void UpdateTitle()
     {
         var title = _service.Running is { } r
             ? $"{AppTitle}  ▶ 作業中: {r.Task.Title} " +
-              $"{DurationFormat.Clock(_service.DurationOn(r.Task, _service.Calendar.DayOf(r.Log.Start)))}" +
+              $"{DurationFormat.Clock(_service.DurationOn(r.Task, _service.Today))}" +
               $"（今回 {DurationFormat.Clock(r.Log.DurationAt(_service.Now))}）"
             : $"{AppTitle}  {BusinessDayCalendar.Key(_shownDay)}（{BusinessDayCalendar.JaWeekday(_shownDay)}）";
         if (_service.TotalDurationOn(_shownDay) > WellDoneAfter) title += "  おつかれさま";

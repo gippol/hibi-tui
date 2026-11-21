@@ -13,6 +13,10 @@ public sealed class BusinessDayCalendar(TimeSpan boundary)
     /// </summary>
     public DateOnly DayOf(DateTimeOffset t) => DateOnly.FromDateTime(t.DateTime - Boundary);
 
+    /// <summary>業務日が始まる時刻（その日の切り替わり時刻）。<paramref name="offset"/> の壁時計で表す。</summary>
+    public DateTimeOffset StartOf(DateOnly day, TimeSpan offset) =>
+        new(day.ToDateTime(TimeOnly.MinValue) + Boundary, offset);
+
     public static string Key(DateOnly day) => day.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture);
 
     private static readonly string[] JaWeekdays = ["日", "月", "火", "水", "木", "金", "土"];

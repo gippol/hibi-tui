@@ -112,6 +112,8 @@ tasks.json は今 `schemaVersion: 6`。
 
 設定の項目は `dataDirectory` / `reportDirectory` / `dayBoundary`（既定 `04:00`）/ `forgottenTimerWarningHours`（既定 `8`）/ `staleTaskDays`（既定 `14`。`0` で保留を使わない）。
 
+作業記録が `dayBoundary` をまたいだとき（例: 03:00〜07:30、切り替わり 04:00）は、切り替わりで分けて数える。03:00〜04:00 は前の業務日、04:00〜07:30 はその日の日報・詳細欄に入る（保存している記録は1つのまま）。
+
 ## 開発
 
 ```powershell

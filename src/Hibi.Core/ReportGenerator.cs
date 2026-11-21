@@ -22,7 +22,7 @@ public static class ReportGenerator
         // その日の時点で完了していないもの（過去の日報なら、あとで完了したものも進行中）
         var inProgress = service.Data.Tasks
             .Where(t => !(t.CompletedAt is { } c && service.Calendar.DayOf(c) <= day) && service.WorkedOn(t, day))
-            .OrderBy(t => t.WorkLogs.Where(l => service.Calendar.DayOf(l.Start) == day).Min(l => l.Start))
+            .OrderBy(t => service.LogsIn(t, day, day).Min(l => l.Start))
             .ToList();
 
         var total = service.TotalDurationOn(day);

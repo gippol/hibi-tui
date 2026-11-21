@@ -91,7 +91,7 @@ public class TaskServiceTests
     }
 
     [Fact]
-    public void 作業時間は開始時刻の業務日に入る()
+    public void 業務日をまたぐ作業時間は切り替わりで分けて入る()
     {
         var (svc, clock) = Fixture.Create(FakeClock.At(2026, 11, 7, 3, 0));
         var a = svc.Add("A");
@@ -99,8 +99,8 @@ public class TaskServiceTests
         clock.Advance(TimeSpan.FromHours(2)); // 5:00 まで（業務日をまたぐ）
         svc.Stop();
 
-        Assert.Equal(TimeSpan.FromHours(2), svc.DurationOn(a, new DateOnly(2026, 11, 6)));
-        Assert.Equal(TimeSpan.Zero, svc.DurationOn(a, new DateOnly(2026, 11, 7)));
+        Assert.Equal(TimeSpan.FromHours(1), svc.DurationOn(a, new DateOnly(2026, 11, 6)));
+        Assert.Equal(TimeSpan.FromHours(1), svc.DurationOn(a, new DateOnly(2026, 11, 7)));
     }
 
     [Fact]
