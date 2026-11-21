@@ -50,7 +50,7 @@ internal sealed class MainWindow : Window
             X = 0,
             Y = 0,
             Width = Dim.Percent(55),
-            Height = Dim.Fill(2),
+            Height = Dim.Fill(1),
         };
         _list = new ShortcutListView
         {
@@ -68,21 +68,21 @@ internal sealed class MainWindow : Window
             X = Pos.Right(listFrame),
             Y = 0,
             Width = Dim.Fill(),
-            Height = Dim.Fill(2),
+            Height = Dim.Fill(1),
             // 詳細は見るだけ。FrameView は既定でフォーカスを取り（TabGroup）、クリックで移ると矢印キーで一覧に戻れないので取らせない
             CanFocus = false,
         };
         _detail = new Label { Width = Dim.Fill(), Height = Dim.Fill() };
         detailFrame.Add(_detail);
 
+        // よく使うものだけ。全部は ? で出す（幅のせまい端末でも切れにくいように1行に収める）
         var footer = new Label
         {
             X = 1,
-            Y = Pos.AnchorEnd(2),
+            Y = Pos.AnchorEnd(1),
             Width = Dim.Fill(),
-            Height = 2,
-            Text = "a:追加 Enter:開始/停止 d:完了/取消 e:編集 t:時間修正 x:削除 /:絞込 Shift+↑↓:並替 s:まとめる\n" +
-                   "n:ふり返り r:日報出力 N/R:過去の日 w:週報出力 m:月報出力 p:保留/戻す h:保留を開く/たたむ q:終了",
+            Height = 1,
+            Text = "?:ヘルプ  a:追加  Enter:開始/停止  d:完了  /:絞込  r:日報  q:終了",
         };
 
         Add(listFrame, detailFrame, footer);
@@ -274,8 +274,8 @@ internal sealed class MainWindow : Window
 
         Action? action =
             key.AsRune.Value == '/' ? AskFilter
-            :
-            key == Key.A ? AddTask
+            : key.AsRune.Value == '?' ? () => Dialogs.Help(_app, HelpText)
+            : key == Key.A ? AddTask
             : key == Key.Enter ? ToggleTimer
             : key == Key.D ? ToggleComplete
             : key == Key.E ? EditTask
@@ -297,6 +297,43 @@ internal sealed class MainWindow : Window
         Run(action);
         return true;
     }
+
+    /// <summary>? で出すキー操作の一覧。</summary>
+    private const string HelpText =
+        """
+        [タスク]
+          ↑ / ↓          タスクを選ぶ
+          a              追加
+          e              編集（タイトル・プロジェクト・期限・優先度・メモ）
+          Enter          タイマーを開始 / 停止
+          d              完了にする / 完了を取り消す
+          t              作業記録を修正
+          x              削除
+          p              保留にする / 保留から戻す
+
+        [一覧]
+          /              絞り込み（スペース区切り: すべてを含む  #名前: プロジェクト）
+          Esc            絞り込みを解除
+          Shift+↑ / ↓    区切りの中で並べ替える
+          s              区切りごとにプロジェクトでまとめる
+          h              [保留] を開く / たたむ
+
+        [ふり返り・日報]
+          n              今日のふり返りを書く
+          r              明日の予定を選んで日報を出力（クリップボードにもコピー）
+          Shift+N / R    過去の業務日を選んで、ふり返り / 日報
+          w              週報を出力
+          m              月報を出力
+
+        [その他]
+          ?              このヘルプ
+          q              終了
+
+        [ダイアログの中]
+          Enter          1行の欄で OK
+          Ctrl+S         保存（複数行の欄でも）
+          Esc            キャンセル
+        """;
 
     /// <summary>操作を実行し、入力エラーはメッセージで知らせる。</summary>
     private void Run(Action action)

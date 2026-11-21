@@ -343,6 +343,33 @@ internal static class Dialogs
         }
     }
 
+    // ---------- ヘルプ ----------
+
+    /// <summary>キー操作の一覧を見せる。せまい端末でも読めるようにスクロールできる欄に出す。</summary>
+    public static void Help(IApplication app, string text)
+    {
+        using var d = new Dialog { Title = "キー操作（?）", Width = Dim.Percent(80), Height = Dim.Percent(90) };
+        var view = new TextView
+        {
+            X = 0,
+            Y = 0,
+            Width = Dim.Fill(),
+            Height = Dim.Fill(1),
+            Text = text,
+            ReadOnly = true,
+        };
+        // 読むだけの欄なので Enter は改行ではなく閉じるにする
+        view.KeyDown += (_, key) =>
+        {
+            if (key != Key.Enter) return;
+            key.Handled = true;
+            d.RequestStop();
+        };
+        d.Add(view, new Label { X = 0, Y = Pos.AnchorEnd(1), Text = "↑↓: スクロール  Enter/Esc: 閉じる" });
+        view.SetFocus();
+        Show(app, d, ["閉じる"]);
+    }
+
     // ---------- 1行の入力 ----------
 
     /// <summary>1行の文字を入れてもらう。キャンセルなら null。</summary>
