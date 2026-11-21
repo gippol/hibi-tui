@@ -49,6 +49,9 @@ internal sealed class MainWindow : Window
     /// <summary>[保留] を開いて出すか。</summary>
     private bool _showStale;
 
+    /// <summary>詳細欄を出すか（i で切り替え）。隠すと一覧が横いっぱいに広がる。起動のたびに出す側に戻る。</summary>
+    private bool _showDetail = true;
+
     public MainWindow(IApplication app, TaskService service, TaskStore store, AppConfig config)
     {
         _app = app;
@@ -375,6 +378,7 @@ internal sealed class MainWindow : Window
             : key == Key.M ? OutputMonthlyReport
             : key == Key.W ? OutputWeeklyReport
             : key == Key.H ? () => _showStale = !_showStale
+            : key == Key.I ? ToggleDetail
             : key == Key.P ? ToggleHold
             : key == Key.S ? GroupByProject
             : key == Key.Q ? ConfirmQuit
@@ -405,6 +409,7 @@ internal sealed class MainWindow : Window
           Shift+↑ / ↓    区切りの中で並べ替える
           s              区切りごとにプロジェクトでまとめる
           h              [保留] を開く / たたむ
+          i              詳細欄を隠す / 出す（隠すと一覧が横いっぱいになる）
 
         [ふり返り・日報]
           n              今日のふり返りを書く
@@ -485,11 +490,24 @@ internal sealed class MainWindow : Window
         _preview.SetFocus();
     }
 
+    /// <summary>詳細欄を隠す / 出す。せまい画面で一覧を広く使うため。</summary>
+    private void ToggleDetail()
+    {
+        _showDetail = !_showDetail;
+        ApplyDetailVisibility();
+    }
+
+    private void ApplyDetailVisibility()
+    {
+        _detailFrame.Visible = _showDetail;
+        _listFrame.Width = _showDetail ? Dim.Percent(55) : Dim.Fill();
+    }
+
     private void ClosePreview()
     {
         _preview.Visible = false;
         _listFrame.Visible = true;
-        _detailFrame.Visible = true;
+        ApplyDetailVisibility();
         _footer.Text = FooterText;
         _list.SetFocus();
         Refresh();
