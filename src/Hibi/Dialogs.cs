@@ -84,8 +84,13 @@ internal static class Dialogs
         _ => "普通",
     };
 
-    /// <summary>タスクの追加・編集。<paramref name="initial"/> が null なら空の状態から。</summary>
-    public static TaskInput? EditTask(IApplication app, string title, TaskInput? initial, IReadOnlyList<string> projects)
+    /// <summary>
+    /// タスクの追加・編集。<paramref name="initial"/> が null なら空の状態から。
+    /// <paramref name="quickAddToday"/> を渡すと（追加のとき）、タイトルの一行記法（<see cref="QuickAdd"/>）を読む。
+    /// 記法で書いたものは、ほかの欄より優先する。
+    /// </summary>
+    public static TaskInput? EditTask(IApplication app, string title, TaskInput? initial, IReadOnlyList<string> projects,
+        DateOnly? quickAddToday = null)
     {
         var taskTitle = initial?.Title;
         var project = initial?.Project;
@@ -133,6 +138,14 @@ internal static class Dialogs
                 WordWrap = true,
                 TabKeyAddsTab = false,
             };
+            if (quickAddToday is not null)
+                d.Add(new Label
+                {
+                    X = 14,
+                    Y = 1,
+                    Width = Dim.Fill(1),
+                    Text = "タイトルに書いても入る:  #プロジェクト  !高 !低  @期限（11-25, 明日）",
+                });
             d.Add(
                 new Label { X = 1, Y = 0, Text = "タイトル" }, titleField,
                 new Label { X = 1, Y = 2, Text = "プロジェクト" }, projectField, hint,
@@ -149,6 +162,16 @@ internal static class Dialogs
             memo = memoView.Text;
             dueText = dueField.Text.Trim();
             priority = prioritySelector.Value is int pi && pi >= 0 && pi < Priorities.Length ? Priorities[pi] : TaskPriority.Normal;
+
+            if (quickAddToday is { } today)
+            {
+                // 読み取った結果を各欄の値にする（エラーで出し直したときも、記法ではなく中身で見える）
+                var q = QuickAdd.Parse(taskTitle, today);
+                taskTitle = q.Title;
+                project = q.Project ?? project;
+                priority = q.Priority ?? priority;
+                if (q.Due is { } qd) dueText = BusinessDayCalendar.Key(qd);
+            }
 
             if (string.IsNullOrWhiteSpace(taskTitle))
             {
@@ -445,7 +468,7 @@ internal static class Dialogs
 
         void AddFromDialog()
         {
-            if (EditTask(app, "明日の予定にタスクを追加", null, service.Projects()) is not { } r) return;
+            if (EditTask(app, "明日の予定にタスクを追加", null, service.Projects(), service.Today) is not { } r) return;
             // 印を今の状態から引き継ぐ
             Collect();
             var t = service.Add(r.Title, r.Project, r.Memo, r.Due, r.Priority);

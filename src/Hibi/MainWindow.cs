@@ -387,7 +387,7 @@ internal sealed class MainWindow : Window
 
     private void AddTask()
     {
-        if (Dialogs.EditTask(_app, "タスクを追加", null, _service.Projects()) is not { } r) return;
+        if (Dialogs.EditTask(_app, "タスクを追加", null, _service.Projects(), _service.Today) is not { } r) return;
         var t = _service.Add(r.Title, r.Project, r.Memo, r.Due, r.Priority);
         Refresh();
         if (_rowTasks.IndexOf(t) is var i and >= 0) _list.Value = i; // 絞り込みで見えないときは選択を動かさない
