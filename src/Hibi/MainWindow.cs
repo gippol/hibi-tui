@@ -20,6 +20,9 @@ internal sealed class MainWindow : Window
     private readonly FrameView _listFrame;
     private readonly ShortcutListView _list;
     private readonly Label _detail;
+    private readonly Label _footer;
+    private readonly Label _filterPrompt;
+    private readonly TextField _filterField;
     private readonly ObservableCollection<string> _rows = [];
     private readonly List<TaskItem?> _rowTasks = []; // 見出し行は null
 
@@ -76,7 +79,7 @@ internal sealed class MainWindow : Window
         detailFrame.Add(_detail);
 
         // よく使うものだけ。全部は ? で出す（幅のせまい端末でも切れにくいように1行に収める）
-        var footer = new Label
+        _footer = new Label
         {
             X = 1,
             Y = Pos.AnchorEnd(1),
@@ -85,7 +88,40 @@ internal sealed class MainWindow : Window
             Text = "?:ヘルプ  a:追加  Enter:開始/停止  d:完了  /:絞込  r:日報  q:終了",
         };
 
-        Add(listFrame, detailFrame, footer);
+        // 絞り込みの入力欄。/ で出してフッターと入れ替える。打つたびに一覧を絞る
+        _filterPrompt = new Label { X = 1, Y = Pos.AnchorEnd(1), Text = "絞り込み（#名前: プロジェクト  Enter: 決定  Esc: 解除）:", Visible = false };
+        _filterField = new TextField
+        {
+            X = Pos.Right(_filterPrompt) + 1,
+            Y = Pos.AnchorEnd(1),
+            Width = Dim.Fill(1),
+            Visible = false,
+        };
+        _filterField.TextChanged += (_, _) =>
+        {
+            if (!_filterField.Visible) return;
+            _filter = string.IsNullOrWhiteSpace(_filterField.Text) ? null : _filterField.Text.Trim();
+            Refresh();
+        };
+        _filterField.KeyDown += (_, key) =>
+        {
+            if (key == Key.Esc) CloseFilter(clear: true);
+            else if (key == Key.Enter) CloseFilter(clear: false);
+            else if (key == Key.CursorUp || key == Key.CursorDown)
+            {
+                CloseFilter(clear: false);
+                HandleKey(key); // そのまま一覧の選択を動かす
+            }
+            else return;
+            key.Handled = true;
+        };
+        // マウスで一覧をクリックしたときなど、ほかへ移ったら絞り込みを残して閉じる
+        _filterField.HasFocusChanged += (_, e) =>
+        {
+            if (!e.NewValue && _filterField.Visible) CloseFilter(clear: false);
+        };
+
+        Add(listFrame, detailFrame, _footer, _filterPrompt, _filterField);
 
         _service.Changed += Save;
         Refresh();
@@ -273,7 +309,7 @@ internal sealed class MainWindow : Window
         }
 
         Action? action =
-            key.AsRune.Value == '/' ? AskFilter
+            key.AsRune.Value == '/' ? OpenFilter
             : key.AsRune.Value == '?' ? () => Dialogs.Help(_app, HelpText)
             : key == Key.A ? AddTask
             : key == Key.Enter ? ToggleTimer
@@ -371,12 +407,31 @@ internal sealed class MainWindow : Window
     /// </summary>
     protected override bool OnKeyDown(Key key) => key == Key.Esc || base.OnKeyDown(key);
 
-    private void AskFilter()
+    /// <summary>フッターを絞り込みの入力欄に替える。今の絞り込みの続きから打てる。</summary>
+    private void OpenFilter()
     {
-        var q = Dialogs.AskLine(_app, "絞り込み", "タイトル・プロジェクトに含む文字", _filter,
-            "スペース区切り: すべてを含む  #名前: プロジェクトだけ  空: 解除");
-        if (q is null) return;
-        _filter = string.IsNullOrWhiteSpace(q) ? null : q.Trim();
+        _footer.Visible = false;
+        _filterPrompt.Visible = true;
+        _filterField.Visible = true;
+        _filterField.Text = _filter ?? "";
+        _filterField.SetFocus();
+        _filterField.MoveEnd();
+    }
+
+    /// <summary>入力欄を閉じて一覧に戻る。<paramref name="clear"/> なら絞り込みも解除する。</summary>
+    private void CloseFilter(bool clear)
+    {
+        // 先に隠す: Text を消したときの TextChanged と、フォーカスが外れたときの呼び直しを止める
+        _filterField.Visible = false;
+        _filterPrompt.Visible = false;
+        _footer.Visible = true;
+        if (clear)
+        {
+            _filterField.Text = "";
+            _filter = null;
+        }
+        _list.SetFocus();
+        Refresh();
     }
 
     /// <summary>
