@@ -51,6 +51,10 @@ public sealed class TaskService(TaskData data, BusinessDayCalendar calendar, Tim
 
     public TimeSpan TotalDuration(TaskItem task) => Sum(task.WorkLogs);
 
+    /// <summary>指定業務日の、すべてのタスクの作業時間の合計（日報の稼働合計）。計測中は今までの分を入れる。</summary>
+    public TimeSpan TotalDurationOn(DateOnly day) =>
+        Data.Tasks.Aggregate(TimeSpan.Zero, (acc, t) => acc + DurationOn(t, day));
+
     /// <summary>最後に触った業務日: 作成・手での変更（UpdatedAt）・作業記録の開始と終了のうち、いちばん新しい日。</summary>
     public DateOnly LastActivityDay(TaskItem task)
     {

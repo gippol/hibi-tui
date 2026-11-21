@@ -25,7 +25,7 @@ public static class ReportGenerator
             .OrderBy(t => t.WorkLogs.Where(l => service.Calendar.DayOf(l.Start) == day).Min(l => l.Start))
             .ToList();
 
-        var total = service.Data.Tasks.Aggregate(TimeSpan.Zero, (acc, t) => acc + service.DurationOn(t, day));
+        var total = service.TotalDurationOn(day);
 
         var record = service.GetDay(day);
         var tomorrow = (record?.TomorrowTaskIds ?? [])

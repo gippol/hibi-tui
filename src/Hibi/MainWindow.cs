@@ -5,6 +5,9 @@ using Terminal.Gui.Input;
 using Terminal.Gui.ViewBase;
 using Terminal.Gui.Views;
 
+// TextView は v2.5 で非推奨（別パッケージの EditorView が後継）だが、読むだけの欄には標準の TextView で足りる
+#pragma warning disable CS0618
+
 namespace Hibi;
 
 /// <summary>メイン画面（要件 5.1）。</summary>
@@ -12,12 +15,19 @@ internal sealed class MainWindow : Window
 {
     private const string AppTitle = "hibi";
 
+    /// <summary>今日の作業がこれを超えたら、タイトル行にこっそり「おつかれさま」と出す（隠し機能。ヘルプには書かない）。</summary>
+    private static readonly TimeSpan WellDoneAfter = TimeSpan.FromHours(8);
+
+    private const string FooterText = "?:ヘルプ  a:追加  Enter:開始/停止  d:完了  /:絞込  r:日報  ^O:日報を見る  q:終了";
+
     private readonly IApplication _app;
     private readonly TaskService _service;
     private readonly TaskStore _store;
     private readonly AppConfig _config;
 
     private readonly FrameView _listFrame;
+    private readonly FrameView _detailFrame;
+    private readonly TextView _preview;
     private readonly ShortcutListView _list;
     private readonly Label _detail;
     private readonly Label _footer;
@@ -66,7 +76,7 @@ internal sealed class MainWindow : Window
         _list.ValueChanged += (_, _) => UpdateDetail();
         listFrame.Add(_list);
 
-        var detailFrame = new FrameView
+        var detailFrame = _detailFrame = new FrameView
         {
             Title = "詳細",
             X = Pos.Right(listFrame),
@@ -86,7 +96,7 @@ internal sealed class MainWindow : Window
             Y = Pos.AnchorEnd(1),
             Width = Dim.Fill(),
             Height = 1,
-            Text = "?:ヘルプ  a:追加  Enter:開始/停止  d:完了  /:絞込  r:日報  q:終了",
+            Text = FooterText,
         };
 
         // 絞り込みの入力欄。/ で出してフッターと入れ替える。打つたびに一覧を絞る
@@ -122,7 +132,25 @@ internal sealed class MainWindow : Window
             if (!e.NewValue && _filterField.Visible) CloseFilter(clear: false);
         };
 
-        Add(listFrame, detailFrame, _footer, _filterPrompt, _filterField);
+        // Ctrl+O で一覧と詳細を隠して、今日の日報を画面いっぱいに出す（Norton Commander の Ctrl+O 風）
+        _preview = new TextView
+        {
+            X = 0,
+            Y = 0,
+            Width = Dim.Fill(),
+            Height = Dim.Fill(1),
+            ReadOnly = true,
+            WordWrap = true,
+            Visible = false,
+        };
+        _preview.KeyDown += (_, key) =>
+        {
+            if (key != Key.O.WithCtrl && key != Key.Esc && key != Key.Q) return;
+            key.Handled = true;
+            ClosePreview();
+        };
+
+        Add(listFrame, detailFrame, _preview, _footer, _filterPrompt, _filterField);
 
         _service.Changed += Save;
         Refresh();
@@ -260,9 +288,11 @@ internal sealed class MainWindow : Window
 
     private void UpdateTitle()
     {
-        Title = _service.Running is { } r
+        var title = _service.Running is { } r
             ? $"{AppTitle}  ▶ 作業中: {r.Task.Title} {DurationFormat.Clock(r.Log.DurationAt(_service.Now))}"
             : $"{AppTitle}  {BusinessDayCalendar.Key(_shownDay)}（{BusinessDayCalendar.JaWeekday(_shownDay)}）";
+        if (_service.TotalDurationOn(_shownDay) > WellDoneAfter) title += "  おつかれさま";
+        Title = title;
     }
 
     private void UpdateDetail()
@@ -329,6 +359,7 @@ internal sealed class MainWindow : Window
         Action? action =
             key.AsRune.Value == '/' ? OpenFilter
             : key.AsRune.Value == '?' ? () => Dialogs.Help(_app, HelpText)
+            : key == Key.O.WithCtrl ? OpenPreview
             : key == Key.A ? AddTask
             : key == Key.Enter ? ToggleTimer
             : key == Key.D ? ToggleComplete
@@ -380,6 +411,7 @@ internal sealed class MainWindow : Window
           m              月報を出力
 
         [その他]
+          Ctrl+O         今日の日報を画面いっぱいに出す（もう一度 Ctrl+O か Esc で戻る）
           ?              このヘルプ
           q              終了
 
@@ -434,6 +466,30 @@ internal sealed class MainWindow : Window
         _filterField.Text = _filter ?? "";
         _filterField.SetFocus();
         _filterField.MoveEnd();
+    }
+
+    /// <summary>
+    /// 一覧と詳細を隠して、今日の日報をそのまま見せる。開いたときの内容で、保存も出力もしない
+    /// （明日の予定とふり返りは、今保存されているものが入る）。
+    /// </summary>
+    private void OpenPreview()
+    {
+        _preview.Text = ReportGenerator.Generate(_service, _service.Today);
+        _listFrame.Visible = false;
+        _detailFrame.Visible = false;
+        _preview.Visible = true;
+        _footer.Text = "日報のプレビュー（まだ出力していません）  ↑↓: スクロール  Ctrl+O/Esc: 一覧に戻る";
+        _preview.SetFocus();
+    }
+
+    private void ClosePreview()
+    {
+        _preview.Visible = false;
+        _listFrame.Visible = true;
+        _detailFrame.Visible = true;
+        _footer.Text = FooterText;
+        _list.SetFocus();
+        Refresh();
     }
 
     /// <summary>入力欄を閉じて一覧に戻る。<paramref name="clear"/> なら絞り込みも解除する。</summary>
