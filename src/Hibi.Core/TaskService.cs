@@ -163,6 +163,24 @@ public sealed class TaskService(TaskData data, BusinessDayCalendar calendar, Tim
         OnChanged();
     }
 
+    /// <summary>低い順。優先度を1段ずつ上げ下げするのに使う。</summary>
+    private static readonly TaskPriority[] PriorityLadder = [TaskPriority.Low, TaskPriority.Normal, TaskPriority.High];
+
+    /// <summary>
+    /// 優先度を <paramref name="delta"/> 段上げる（負なら下げる）。高・低の端より先には動かさない。
+    /// 変えたら「触った」ことにする。変わらなければ何もせず false。
+    /// </summary>
+    public bool ChangePriority(Guid id, int delta)
+    {
+        var task = Get(id);
+        var i = Math.Clamp(Array.IndexOf(PriorityLadder, task.Priority) + delta, 0, PriorityLadder.Length - 1);
+        if (PriorityLadder[i] == task.Priority) return false;
+        task.Priority = PriorityLadder[i];
+        task.UpdatedAt = Now;
+        OnChanged();
+        return true;
+    }
+
     /// <summary>
     /// 手で保留にする（true）・保留から戻す（false）。戻すときは「触った」ことにするので、
     /// 日数による自動の保留からも外れる。完了したタスクには使えない。

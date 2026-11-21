@@ -360,6 +360,8 @@ internal sealed class MainWindow : Window
             key.AsRune.Value == '/' ? OpenFilter
             : key.AsRune.Value == '?' ? () => Dialogs.Help(_app, HelpText)
             : key == Key.O.WithCtrl ? OpenPreview
+            : key.AsRune.Value == '+' ? () => ChangePriority(1)
+            : key.AsRune.Value == '-' ? () => ChangePriority(-1)
             : key == Key.A ? AddTask
             : key == Key.Enter ? ToggleTimer
             : key == Key.D ? ToggleComplete
@@ -395,6 +397,7 @@ internal sealed class MainWindow : Window
           t              作業記録を修正
           x              削除
           p              保留にする / 保留から戻す
+          + / -          優先度を1つ上げる / 下げる（低 ↔ 普通 ↔ 高）
 
         [一覧]
           /              絞り込み（スペース区切り: すべてを含む  #名前: プロジェクト）
@@ -533,6 +536,12 @@ internal sealed class MainWindow : Window
         _service.GroupPlannedByProject(IsShown);
         var heldShown = _showStale || _filter is not null;
         _service.GroupOpenByProject(t => !_plannedIds.Contains(t.Id) && IsShown(t) && (heldShown || !IsHeld(t)));
+    }
+
+    /// <summary>選んでいる未完了タスクの優先度を1段上げ下げする。端なら何もしない。</summary>
+    private void ChangePriority(int delta)
+    {
+        if (Selected is { IsCompleted: false } t) _service.ChangePriority(t.Id, delta);
     }
 
     /// <summary>保留（手で・自動どちらも）なら戻し、そうでなければ手で保留にする。</summary>
