@@ -366,6 +366,83 @@ internal static class Dialogs
         }
     }
 
+    // ---------- 設定（config.json） ----------
+
+    /// <summary>
+    /// 設定を画面で変える。<paramref name="current"/> は変えずに、直した写しを返す（キャンセルなら null）。
+    /// 値がおかしければ知らせて、入れたままの状態で出し直す。
+    /// </summary>
+    public static AppConfig? EditConfig(IApplication app, AppConfig current, string configPath)
+    {
+        var dataText = current.DataDirectory;
+        var reportText = current.ReportDirectory;
+        var boundaryText = current.DayBoundary;
+        var hoursText = current.ForgottenTimerWarningHours.ToString(CultureInfo.InvariantCulture);
+        var staleText = current.StaleTaskDays.ToString(CultureInfo.InvariantCulture);
+        while (true)
+        {
+            using var d = new Dialog { Title = "設定", Width = Dim.Percent(80), Height = 21 };
+            const int x = 22;
+            TextField Field(int y, string label, string text, Dim width, string hint)
+            {
+                var f = new TextField { X = x, Y = y, Width = width, Text = text };
+                d.Add(new Label { X = 1, Y = y, Text = label }, f,
+                    new Label { X = x, Y = y + 1, Width = Dim.Fill(1), Text = hint });
+                return f;
+            }
+
+            var dataField = Field(0, "データのフォルダ", dataText, Dim.Fill(1),
+                "tasks.json とバックアップ。次の起動から（今のデータは移しません）");
+            var reportField = Field(3, "日報のフォルダ", reportText, Dim.Fill(1), "日報・週報・月報の出力先");
+            var boundaryField = Field(6, "日の切り替わり", boundaryText, 6, "HH:mm（例: 04:00）。この時刻より前は前の業務日");
+            var hoursField = Field(9, "止め忘れの警告", hoursText, 6, "時間（起動したとき、これより長く動いていたら確認する）");
+            var staleField = Field(12, "自動で保留", staleText, 6, "業務日（これだけ触っていない未完了タスク。0: 使わない）");
+            d.Add(
+                new Label { X = 1, Y = 15, Width = Dim.Fill(1), Text = $"保存先: {configPath}　%APPDATA% などの環境変数も使える" },
+                new Label { X = 1, Y = Pos.AnchorEnd(1), Text = "Enter/Ctrl+S: 保存  Tab: 次の欄  Esc: キャンセル" });
+            dataField.SetFocus();
+
+            if (Show(app, d, ["保存", Cancel], dataField, reportField, boundaryField, hoursField, staleField) != 0)
+                return null;
+
+            dataText = dataField.Text.Trim();
+            reportText = reportField.Text.Trim();
+            boundaryText = boundaryField.Text.Trim();
+            hoursText = hoursField.Text.Trim();
+            staleText = staleField.Text.Trim();
+
+            if (!double.TryParse(hoursText, NumberStyles.Float, CultureInfo.InvariantCulture, out var hours))
+            {
+                Error(app, "止め忘れの警告は時間を数で入力してください（例: 8、1.5）。");
+                continue;
+            }
+            if (!int.TryParse(staleText, NumberStyles.Integer, CultureInfo.InvariantCulture, out var stale))
+            {
+                Error(app, "自動で保留は日数を整数で入力してください（0 なら使わない）。");
+                continue;
+            }
+            // 「4:00」も「04:00」として受け付ける
+            if (TimeOnly.TryParseExact(boundaryText, "H:mm", CultureInfo.InvariantCulture, DateTimeStyles.None, out var b))
+                boundaryText = b.ToString("HH:mm", CultureInfo.InvariantCulture);
+
+            var edited = current.Clone();
+            edited.DataDirectory = dataText;
+            edited.ReportDirectory = reportText;
+            edited.DayBoundary = boundaryText;
+            edited.ForgottenTimerWarningHours = hours;
+            edited.StaleTaskDays = stale;
+            try
+            {
+                edited.Validate();
+                return edited;
+            }
+            catch (ConfigException ex)
+            {
+                Error(app, ex.Message);
+            }
+        }
+    }
+
     // ---------- ヘルプ ----------
 
     /// <summary>キー操作の一覧を見せる。せまい端末でも読めるようにスクロールできる欄に出す。</summary>
@@ -381,6 +458,7 @@ internal static class Dialogs
             Text = text,
             ReadOnly = true,
         };
+        ScrollOnArrows(view);
         // 読むだけの欄なので Enter は改行ではなく閉じるにする
         view.KeyDown += (_, key) =>
         {
@@ -391,6 +469,32 @@ internal static class Dialogs
         d.Add(view, new Label { X = 0, Y = Pos.AnchorEnd(1), Text = "↑↓: スクロール  Enter/Esc: 閉じる" });
         view.SetFocus();
         Show(app, d, ["閉じる"]);
+    }
+
+    /// <summary>
+    /// 読むだけの欄で ↑↓ / PageUp・PageDown を押したら、すぐに表示をずらす。
+    /// TextView の既定はカーソルを動かすだけで、カーソルが端に届くまで表示が動かず、スクロールしないように見えるため。
+    /// </summary>
+    public static void ScrollOnArrows(TextView view)
+    {
+        view.KeyDown += (_, key) =>
+        {
+            var page = Math.Max(1, view.Viewport.Height - 1);
+            int? delta =
+                key == Key.CursorDown ? 1
+                : key == Key.CursorUp ? -1
+                : key == Key.PageDown ? page
+                : key == Key.PageUp ? -page
+                : null;
+            if (delta is not { } d) return;
+            key.Handled = true;
+
+            var top = Math.Clamp(view.Viewport.Y + d, 0, Math.Max(0, view.Lines - view.Viewport.Height));
+            // カーソルを見えている先頭の行に置いてから動かす（描き直しでカーソルの位置へ戻されないように）
+            view.InsertionPoint = new System.Drawing.Point(0, top);
+            view.ScrollTo(new System.Drawing.Point(0, top));
+            view.SetNeedsDraw();
+        };
     }
 
     // ---------- 業務日の入力（過去のふり返り・日報） ----------

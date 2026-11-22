@@ -49,10 +49,7 @@ public sealed class AppConfig
         {
             var loaded = JsonSerializer.Deserialize(File.ReadAllText(path), Json.Context.AppConfig)
                 ?? throw new ConfigException("config.json が空です。");
-            _ = loaded.DayBoundaryTime;          // 検証
-            _ = loaded.ForgottenTimerWarning;    // 検証
-            if (loaded.StaleTaskDays < 0)
-                throw new ConfigException("staleTaskDays は 0 以上にしてください（0 なら保留を使わない）。");
+            loaded.Validate();
             return loaded;
         }
         catch (JsonException ex)
@@ -60,6 +57,40 @@ public sealed class AppConfig
             throw new ConfigException($"config.json を読めません: {ex.Message}", ex);
         }
     }
+
+    /// <summary>値を確かめる。おかしければ <see cref="ConfigException"/>。</summary>
+    public void Validate()
+    {
+        CheckDirectory(DataDirectory, "dataDirectory");
+        CheckDirectory(ReportDirectory, "reportDirectory");
+        _ = DayBoundaryTime;
+        _ = ForgottenTimerWarning;
+        if (StaleTaskDays < 0)
+            throw new ConfigException("staleTaskDays は 0 以上にしてください（0 なら保留を使わない）。");
+    }
+
+    private static void CheckDirectory(string path, string name)
+    {
+        if (string.IsNullOrWhiteSpace(path))
+            throw new ConfigException($"{name} を入力してください。");
+        try
+        {
+            _ = Expand(path);
+        }
+        catch (Exception ex) when (ex is ArgumentException or NotSupportedException or PathTooLongException)
+        {
+            throw new ConfigException($"{name} はフォルダのパスとして使えません: \"{path}\"", ex);
+        }
+    }
+
+    /// <summary>確かめてから書く（画面から変えたとき）。</summary>
+    public void Save(string path)
+    {
+        Validate();
+        AtomicFile.WriteAllText(path, Json.Serialize(this, Json.Context.AppConfig));
+    }
+
+    public AppConfig Clone() => (AppConfig)MemberwiseClone();
 }
 
 public sealed class ConfigException(string message, Exception? inner = null) : Exception(message, inner);

@@ -30,6 +30,18 @@ public class DayBoundarySplitTests
     }
 
     [Fact]
+    public void 切り替わり時刻を変えると記録はそのまま新しい区切りで数え直す()
+    {
+        var (service, t) = StoppedAcrossBoundary();
+
+        service.Calendar = new BusinessDayCalendar(TimeSpan.FromHours(6));
+
+        Assert.Equal(TimeSpan.FromHours(3), service.DurationOn(t, Day21));
+        Assert.Equal(TimeSpan.FromHours(1.5), service.DurationOn(t, Day22));
+        Assert.Equal(Day22, service.Today); // 07:30 は 06:00 より後
+    }
+
+    [Fact]
     public void 計測中の記録も今日の分は今日に入れる()
     {
         var (service, clock) = Fixture.Create(FakeClock.At(2026, 11, 22, 3, 0));

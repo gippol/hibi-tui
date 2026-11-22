@@ -24,6 +24,13 @@ internal sealed class MainWindow : Window
     private readonly TaskService _service;
     private readonly TaskStore _store;
     private readonly AppConfig _config;
+    private readonly string _configPath;
+
+    /// <summary>
+    /// config.json に書いてあるデータのフォルダ。画面で変えても今のデータの置き場（<see cref="_store"/>）は
+    /// 次の起動まで変えないので、<see cref="_config"/> とは別に持つ。
+    /// </summary>
+    private string _savedDataDirectory;
 
     private readonly FrameView _listFrame;
     private readonly FrameView _detailFrame;
@@ -52,12 +59,14 @@ internal sealed class MainWindow : Window
     /// <summary>詳細欄を出すか（i で切り替え）。隠すと一覧が横いっぱいに広がる。起動のたびに出す側に戻る。</summary>
     private bool _showDetail = true;
 
-    public MainWindow(IApplication app, TaskService service, TaskStore store, AppConfig config)
+    public MainWindow(IApplication app, TaskService service, TaskStore store, AppConfig config, string configPath)
     {
         _app = app;
         _service = service;
         _store = store;
         _config = config;
+        _configPath = configPath;
+        _savedDataDirectory = config.DataDirectory;
 
         Title = AppTitle;
 
@@ -146,6 +155,7 @@ internal sealed class MainWindow : Window
             WordWrap = true,
             Visible = false,
         };
+        Dialogs.ScrollOnArrows(_preview);
         _preview.KeyDown += (_, key) =>
         {
             if (key != Key.O.WithCtrl && key != Key.Esc && key != Key.Q) return;
@@ -388,6 +398,7 @@ internal sealed class MainWindow : Window
             : key == Key.I ? ToggleDetail
             : key == Key.P ? ToggleHold
             : key == Key.S ? GroupByProject
+            : key == Key.C ? EditConfig
             : key == Key.Q ? ConfirmQuit
             : null;
         if (action is null) return false;
@@ -427,6 +438,7 @@ internal sealed class MainWindow : Window
 
         [その他]
           Ctrl+O         今日の日報を画面いっぱいに出す（もう一度 Ctrl+O か Esc で戻る）
+          c              設定（フォルダ・日の切り替わり・止め忘れの警告・自動で保留）
           ?              このヘルプ
           q              終了
 
@@ -706,6 +718,55 @@ internal sealed class MainWindow : Window
             Dialogs.Error(_app, $"週報を保存できませんでした: {ex.Message}");
         }
     }
+
+    // ---------- 設定 ----------
+
+    /// <summary>
+    /// 設定を画面で変えて config.json に書く。データのフォルダ以外はすぐに効く
+    /// （止め忘れの警告は起動したときに見るので、次の起動から）。
+    /// </summary>
+    private void EditConfig()
+    {
+        var shown = _config.Clone();
+        shown.DataDirectory = _savedDataDirectory;
+        if (Dialogs.EditConfig(_app, shown, _configPath) is not { } edited) return;
+
+        if (!SamePath(edited.DataDirectoryPath, shown.DataDirectoryPath) && !ConfirmDataDirectory(edited.DataDirectoryPath))
+            return;
+
+        try
+        {
+            edited.Save(_configPath);
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            Dialogs.Error(_app, $"設定を保存できませんでした: {ex.Message}");
+            return;
+        }
+
+        _savedDataDirectory = edited.DataDirectory;
+        _config.ReportDirectory = edited.ReportDirectory;
+        _config.DayBoundary = edited.DayBoundary;
+        _config.ForgottenTimerWarningHours = edited.ForgottenTimerWarningHours;
+        _config.StaleTaskDays = edited.StaleTaskDays;
+        if (edited.DayBoundaryTime != _service.Calendar.Boundary)
+            _service.Calendar = new BusinessDayCalendar(edited.DayBoundaryTime);
+    }
+
+    /// <summary>データのフォルダを変えるときは、次の起動でどうなるかを先に見せる。</summary>
+    private bool ConfirmDataDirectory(string newDirectory)
+    {
+        var next = new TaskStore(newDirectory);
+        var what = File.Exists(next.DataPath)
+            ? "そのフォルダの tasks.json を使います。"
+            : "そのフォルダにはまだデータがないので、空の状態から始まります。\n" +
+              $"今のデータを使い続けるなら、終了してから\n  {_store.DataPath}\nをそのフォルダにコピーしてください。";
+        return Dialogs.Confirm(_app, "データのフォルダを変える",
+            $"次の起動から\n  {newDirectory}\nを使います。今のデータは移しません。\n{what}", "変える");
+    }
+
+    private static bool SamePath(string a, string b) =>
+        string.Equals(Path.TrimEndingDirectorySeparator(a), Path.TrimEndingDirectorySeparator(b), StringComparison.OrdinalIgnoreCase);
 
     // ---------- 止め忘れ（F-W-07） ----------
 

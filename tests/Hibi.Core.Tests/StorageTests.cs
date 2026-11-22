@@ -100,6 +100,61 @@ public sealed class StorageTests : IDisposable
     }
 
     [Fact]
+    public void 画面で変えた設定を保存すると次に読み込める()
+    {
+        var path = Path.Combine(_dir, "config.json");
+        var config = AppConfig.LoadOrCreate(path).Clone();
+        config.ReportDirectory = @"%USERPROFILE%\日報";
+        config.DayBoundary = "05:30";
+        config.ForgottenTimerWarningHours = 1.5;
+        config.StaleTaskDays = 0;
+
+        config.Save(path);
+        var loaded = AppConfig.LoadOrCreate(path);
+
+        Assert.Equal(@"%USERPROFILE%\日報", loaded.ReportDirectory);
+        Assert.Contains(@"%USERPROFILE%\\日報", File.ReadAllText(path)); // 環境変数は展開せず、日本語もそのまま書く
+        Assert.Equal(new TimeSpan(5, 30, 0), loaded.DayBoundaryTime);
+        Assert.Equal(TimeSpan.FromMinutes(90), loaded.ForgottenTimerWarning);
+        Assert.Equal(0, loaded.StaleTaskDays);
+    }
+
+    [Theory]
+    [InlineData("dayBoundary", "24:00")]
+    [InlineData("dayBoundary", "4時")]
+    [InlineData("forgottenTimerWarningHours", "0")]
+    [InlineData("staleTaskDays", "-1")]
+    [InlineData("dataDirectory", "")]
+    [InlineData("reportDirectory", "  ")]
+    public void おかしな設定は保存しない(string name, string value)
+    {
+        var path = Path.Combine(_dir, "config.json");
+        var config = AppConfig.LoadOrCreate(path).Clone();
+        var before = File.ReadAllText(path);
+        switch (name)
+        {
+            case "dayBoundary": config.DayBoundary = value; break;
+            case "forgottenTimerWarningHours": config.ForgottenTimerWarningHours = double.Parse(value); break;
+            case "staleTaskDays": config.StaleTaskDays = int.Parse(value); break;
+            case "dataDirectory": config.DataDirectory = value; break;
+            case "reportDirectory": config.ReportDirectory = value; break;
+        }
+
+        Assert.Throws<ConfigException>(() => config.Save(path));
+        Assert.Equal(before, File.ReadAllText(path));
+    }
+
+    [Fact]
+    public void 写しを変えても元の設定は変わらない()
+    {
+        var config = new AppConfig();
+        var copy = config.Clone();
+        copy.StaleTaskDays = 3;
+
+        Assert.Equal(14, config.StaleTaskDays);
+    }
+
+    [Fact]
     public void 日報は日付のファイル名で上書き保存する()
     {
         var day = new DateOnly(2026, 11, 6);

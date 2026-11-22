@@ -11,7 +11,8 @@ public sealed class TaskService(TaskData data, BusinessDayCalendar calendar, Tim
     public event Action? Changed;
 
     public TaskData Data { get; } = data;
-    public BusinessDayCalendar Calendar { get; } = calendar;
+    /// <summary>設定画面で切り替わり時刻を変えたら差し替える。業務日はそのつど計算するので、記録はそのまま新しい区切りで数え直される。</summary>
+    public BusinessDayCalendar Calendar { get; set; } = calendar;
 
     public DateTimeOffset Now => clock.GetLocalNow();
     public DateOnly Today => Calendar.DayOf(Now);

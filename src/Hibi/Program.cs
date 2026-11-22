@@ -56,7 +56,7 @@ AppDomain.CurrentDomain.UnhandledException += (_, e) =>
 using IApplication app = Application.Create();
 app.Init();
 
-using var main = new MainWindow(app, service, store, config);
+using var main = new MainWindow(app, service, store, config, configPath);
 app.StopAfterFirstIteration = startupCheck;
 
 // 予期しないエラーは記録してから知らせ、そのまま続ける（データは変更のたびに保存済み）。
