@@ -19,11 +19,7 @@ public static class ReportGenerator
     public static string Generate(TaskService service, DateOnly day)
     {
         var completed = service.CompletedOn(day);
-        // その日の時点で完了していないもの（過去の日報なら、あとで完了したものも進行中）
-        var inProgress = service.Data.Tasks
-            .Where(t => !(t.CompletedAt is { } c && service.Calendar.DayOf(c) <= day) && service.WorkedOn(t, day))
-            .OrderBy(t => service.LogsIn(t, day, day).Min(l => l.Start))
-            .ToList();
+        var inProgress = service.InProgressOn(day);
 
         var total = service.TotalDurationOn(day);
 
@@ -171,7 +167,7 @@ public static class ReportGenerator
     /// `09:00〜10:30, 13:00〜14:15` の形。開始の順に並べる。時刻は記録したときの壁時計（業務日の判定と同じ）。
     /// 計測中は終了を空けて `13:00〜` と書く。
     /// </summary>
-    internal static string TimeSlots(IEnumerable<WorkLog> logs) =>
+    public static string TimeSlots(IEnumerable<WorkLog> logs) =>
         string.Join(", ", logs.OrderBy(l => l.Start).Select(l =>
             $"{Clock(l.Start)}〜{(l.End is { } e ? Clock(e) : "")}"));
 

@@ -617,7 +617,7 @@ internal sealed class MainWindow : Window
     private void EditWorkLogs()
     {
         if (Selected is not { } t) return;
-        Dialogs.EditWorkLogs(_app, t, logs => _service.ReplaceWorkLogs(t.Id, logs));
+        Dialogs.EditWorkLogs(_app, $"作業記録: {t.Title}", t.WorkLogs, logs => _service.ReplaceWorkLogs(t.Id, logs));
     }
 
     private void DeleteTask()

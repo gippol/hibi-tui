@@ -102,24 +102,47 @@ public sealed class TaskService(TaskData data, BusinessDayCalendar calendar, Tim
     public IEnumerable<WorkLog> LogsIn(TaskItem task, DateOnly from, DateOnly to)
     {
         var now = Now;
-        foreach (var l in task.WorkLogs)
+        return task.WorkLogs.SelectMany(l => Split(l, from, to, now));
+    }
+
+    /// <summary>1つの記録を業務日ごとに切り分け、期間に入る部分だけを返す（<see cref="LogsIn"/>）。</summary>
+    private IEnumerable<WorkLog> Split(WorkLog l, DateOnly from, DateOnly to, DateTimeOffset now)
+    {
+        var end = l.End ?? now;
+        if (end < l.Start) end = l.Start;
+        var day = Calendar.DayOf(l.Start);
+        var start = l.Start;
+        while (true)
         {
-            var end = l.End ?? now;
-            if (end < l.Start) end = l.Start;
-            var day = Calendar.DayOf(l.Start);
-            var start = l.Start;
-            while (true)
-            {
-                var next = Calendar.StartOf(day.AddDays(1), l.Start.Offset);
-                var last = end <= next;
-                if (InRange(day, from, to))
-                    yield return new WorkLog { Start = start, End = last ? l.End : next };
-                if (last || day >= to) break;
-                start = next;
-                day = day.AddDays(1);
-            }
+            var next = Calendar.StartOf(day.AddDays(1), l.Start.Offset);
+            var last = end <= next;
+            if (InRange(day, from, to))
+                yield return new WorkLog { Start = start, End = last ? l.End : next };
+            if (last || day >= to) break;
+            start = next;
+            day = day.AddDays(1);
         }
     }
+
+    /// <summary>
+    /// 指定業務日に一部でも入る作業記録。<see cref="LogsIn"/> と違って切り分けず、元の記録をそのまま返す（開始の順）。
+    /// 切り替わりをまたぐ記録は前の日にも後の日にも入る。
+    /// </summary>
+    public IReadOnlyList<WorkLog> WholeLogsOn(TaskItem task, DateOnly day)
+    {
+        var now = Now;
+        return task.WorkLogs.Where(l => Split(l, day, day, now).Any()).OrderBy(l => l.Start).ToList();
+    }
+
+    /// <summary>
+    /// 指定業務日に作業して、その日の時点で完了していないタスク（その日の最初の作業の順）。日報の「進行中」。
+    /// 過去の日なら、あとで完了したものも入る。
+    /// </summary>
+    public IReadOnlyList<TaskItem> InProgressOn(DateOnly day) =>
+        Data.Tasks
+            .Where(t => !(t.CompletedAt is { } c && Calendar.DayOf(c) <= day) && WorkedOn(t, day))
+            .OrderBy(t => LogsIn(t, day, day).Min(l => l.Start))
+            .ToList();
 
     public TimeSpan DurationIn(TaskItem task, DateOnly from, DateOnly to) => Sum(LogsIn(task, from, to));
 
@@ -391,6 +414,17 @@ public sealed class TaskService(TaskData data, BusinessDayCalendar calendar, Tim
         }
         task.WorkLogs = result.OrderBy(l => l.Start).ToList();
         OnChanged();
+    }
+
+    /// <summary>
+    /// 指定業務日に一部でも入る作業記録（<see cref="WholeLogsOn"/>）だけを置き換える。ほかの日の記録はそのまま。
+    /// 日報を出すときに、その日の作業時間を直すのに使う。確かめ方は <see cref="ReplaceWorkLogs"/> と同じ。
+    /// </summary>
+    public void ReplaceWorkLogsOn(Guid id, DateOnly day, IReadOnlyList<WorkLog> logs)
+    {
+        var task = Get(id);
+        var onDay = WholeLogsOn(task, day);
+        ReplaceWorkLogs(id, task.WorkLogs.Where(l => !onDay.Contains(l)).Concat(logs).ToList());
     }
 
     /// <summary>画面に出る時刻（その記録のオフセットでの壁時計、分まで）が同じか。</summary>

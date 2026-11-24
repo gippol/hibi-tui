@@ -229,17 +229,18 @@ internal static class Dialogs
         "#   2026-11-06 23:00 - 2026-11-07 01:00\n" +
         "#   2026-11-06 13:00 -                  （計測中）\n";
 
-    public static void EditWorkLogs(IApplication app, TaskItem task, Action<List<WorkLog>> apply)
+    /// <summary>作業記録をテキストで直してもらう。保存できたら true（キャンセルなら false）。</summary>
+    public static bool EditWorkLogs(IApplication app, string title, IEnumerable<WorkLog> logs, Action<List<WorkLog>> apply)
     {
-        var text = WorkLogHelp + WorkLogText.Format(task.WorkLogs);
+        var text = WorkLogHelp + WorkLogText.Format(logs);
         while (true)
         {
-            if (EditText(app, $"作業記録: {task.Title}", text) is not { } edited) return;
+            if (EditText(app, title, text) is not { } edited) return false;
             text = edited;
             try
             {
                 apply(WorkLogText.Parse(text, dt => TimeZoneInfo.Local.GetUtcOffset(dt)));
-                return;
+                return true;
             }
             catch (Exception ex) when (ex is FormatException or ArgumentException)
             {
@@ -528,6 +529,8 @@ internal static class Dialogs
     public static ReportInput? PrepareReport(IApplication app, TaskService service, DateOnly day)
     {
         var tasks = service.OpenTasks().ToList();
+        var worked = new List<TaskItem>();
+        var workedRows = new ObservableCollection<string>();
         var record = service.GetDay(day);
         var chosen = new HashSet<Guid>(record?.TomorrowTaskIds ?? []);
         var rows = new ObservableCollection<string>();
@@ -538,12 +541,28 @@ internal static class Dialogs
             Width = Dim.Percent(80),
             Height = Dim.Percent(90),
         };
+        var workedLabel = new Label { X = 0, Y = 3 };
+        var workedList = new ShortcutListView
+        {
+            X = 0,
+            Y = Pos.Bottom(workedLabel),
+            Width = Dim.Fill(),
+            Height = Dim.Percent(20),
+        };
+        workedList.Shortcut = key =>
+        {
+            if (key != Key.T) return false;
+            EditWorked();
+            return true;
+        };
+        workedList.SetSource(workedRows);
+        var tomorrowLabel = new Label { X = 0, Y = Pos.Bottom(workedList), Text = "明日の予定" };
         var list = new ShortcutListView
         {
             X = 0,
-            Y = 3,
+            Y = Pos.Bottom(tomorrowLabel),
             Width = Dim.Fill(),
-            Height = Dim.Percent(30),
+            Height = Dim.Percent(25),
             ShowMarks = true,
             MarkMultiple = true,
         };
@@ -555,10 +574,9 @@ internal static class Dialogs
         };
         list.SetSource(rows);
         d.Add(
-            new Label { X = 0, Y = 0, Text = "Space: 選ぶ/外す  a: タスクを追加  Tab: 予定/課題/学び/所感を切り替え" },
-            new Label { X = 0, Y = 1, Text = "Ctrl+S: 出力  Esc: キャンセル" },
-            new Label { X = 0, Y = 2, Text = "明日の予定" },
-            list);
+            new Label { X = 0, Y = 0, Text = "t: 作業記録を修正（その日の分）  Space: 選ぶ/外す  a: タスクを追加" },
+            new Label { X = 0, Y = 1, Text = "Tab: 作業/予定/課題/学び/所感を切り替え  Ctrl+S: 出力  Esc: キャンセル" },
+            workedLabel, workedList, tomorrowLabel, list);
         var fields = AddNoteFields(d, Pos.Bottom(list), service.GetNotes(day), Dim.Percent(10), Dim.Fill());
 
         void Reload()
@@ -568,6 +586,34 @@ internal static class Dialogs
             for (var i = 0; i < tasks.Count; i++)
                 list.Source!.SetMark(i, chosen.Contains(tasks[i].Id));
             list.SetNeedsDraw();
+        }
+
+        // その日の作業: 日報の完了・進行中と同じ順。作業記録のない完了タスクも、時間を足せるように出す
+        void ReloadWorked()
+        {
+            var selected = workedList.Value;
+            worked.Clear();
+            worked.AddRange(service.CompletedOn(day).Concat(service.InProgressOn(day)));
+            workedRows.Clear();
+            foreach (var t in worked)
+            {
+                var title = t.Project is { } p ? $"{t.Title}  #{p}" : t.Title;
+                var done = t.CompletedAt is { } c && service.Calendar.DayOf(c) == day ? "完了 " : "";
+                var slots = ReportGenerator.TimeSlots(service.LogsIn(t, day, day));
+                workedRows.Add($"{done}{title} — {DurationFormat.Short(service.DurationOn(t, day))}{(slots.Length > 0 ? $"（{slots}）" : "")}");
+            }
+            workedLabel.Text = $"その日の作業（稼働合計 {DurationFormat.Short(service.TotalDurationOn(day))}）";
+            if (worked.Count > 0) workedList.Value = Math.Clamp(selected ?? 0, 0, worked.Count - 1);
+            workedList.SetNeedsDraw();
+        }
+
+        void EditWorked()
+        {
+            if (workedList.Value is not int i || i < 0 || i >= worked.Count) return;
+            var t = worked[i];
+            if (EditWorkLogs(app, $"作業記録: {t.Title}（{BusinessDayCalendar.Key(day)} の分）", service.WholeLogsOn(t, day),
+                    logs => service.ReplaceWorkLogsOn(t.Id, day, logs)))
+                ReloadWorked();
         }
 
         void AddFromDialog()
@@ -589,6 +635,7 @@ internal static class Dialogs
                 else chosen.Remove(tasks[i].Id);
         }
 
+        ReloadWorked();
         Reload();
         list.SetFocus();
         if (Show(app, d, ["出力", Cancel]) != 0) return null;
