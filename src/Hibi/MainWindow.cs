@@ -112,7 +112,7 @@ internal sealed class MainWindow : Window
         };
 
         // 絞り込みの入力欄。/ で出してフッターと入れ替える。打つたびに一覧を絞る
-        _filterPrompt = new Label { X = 1, Y = Pos.AnchorEnd(1), Text = "絞り込み（#名前: プロジェクト  Enter: 決定  Esc: 解除）:", Visible = false };
+        _filterPrompt = new Label { X = 1, Y = Pos.AnchorEnd(1), Text = "絞り込み（#名前: プロジェクト・作業分類  Enter: 決定  Esc: 解除）:", Visible = false };
         _filterField = new TextField
         {
             X = Pos.Right(_filterPrompt) + 1,
@@ -267,7 +267,7 @@ internal sealed class MainWindow : Window
     private void AddHeader(string text) => AddRow(null, new Span(text, Tone.Header));
 
     /// <summary>
-    /// 1行: 印、優先度（! 高 / ↓ 低）、タイトル、#プロジェクト、〆期限。
+    /// 1行: 印、優先度（! 高 / ↓ 低）、タイトル、#プロジェクト/作業分類、〆期限。
     /// 色: 作業中は緑、! は黄、#プロジェクトと期限は灰色（今日は黄、期限切れは赤）、完了した行は全部暗い灰色。
     /// </summary>
     private void AddTask(TaskItem t, string mark)
@@ -282,7 +282,7 @@ internal sealed class MainWindow : Window
             TaskPriority.Low => new Span("↓", Or(Tone.Muted)),
             _ => new Span(""),
         };
-        var project = new Span(t.Project is { } p ? $"  #{p}" : "", Or(Tone.Muted));
+        var project = new Span(t.ProjectLabel is { } p ? $"  #{p}" : "", Or(Tone.Muted));
         var due = done || t.Due is not { } d ? new Span("")
             : _service.IsOverdue(t) ? new Span($"  〆{d:MM-dd} 期限切れ", Tone.Overdue)
             : d == _shownDay ? new Span("  〆今日", Tone.DueToday)
@@ -338,6 +338,7 @@ internal sealed class MainWindow : Window
         _detail.Text =
             $"タイトル: {t.Title}\n" +
             $"プロジェクト: {t.Project ?? "-"}\n" +
+            $"作業分類: {t.Activity ?? "-"}\n" +
             $"状態: {state}\n" +
             $"優先度: {Dialogs.PriorityLabel(t.Priority)}  期限: {due}\n" +
             $"最後に触った日: {BusinessDayCalendar.Key(last)}（{(ago <= 0 ? "今日" : $"{ago}日前")}）\n" +
@@ -413,7 +414,7 @@ internal sealed class MainWindow : Window
         [タスク]
           ↑ / ↓          タスクを選ぶ
           a              追加
-          e              編集（タイトル・プロジェクト・期限・優先度・メモ）
+          e              編集（タイトル・プロジェクト・作業分類・期限・優先度・メモ）
           Enter          タイマーを開始 / 停止
           d              完了にする / 完了を取り消す
           t              作業記録を修正
@@ -422,10 +423,10 @@ internal sealed class MainWindow : Window
           + / -          優先度を1つ上げる / 下げる（低 ↔ 普通 ↔ 高）
 
         [一覧]
-          /              絞り込み（スペース区切り: すべてを含む  #名前: プロジェクト）
+          /              絞り込み（スペース区切り: すべてを含む  #名前: プロジェクト・作業分類）
           Esc            絞り込みを解除
           Shift+↑ / ↓    区切りの中で並べ替える
-          s              区切りごとにプロジェクトでまとめる
+          s              区切りごとにプロジェクト・作業分類でまとめる
           h              [保留] を開く / たたむ
           i              詳細欄を隠す / 出す（隠すと一覧が横いっぱいになる）
 
@@ -464,8 +465,8 @@ internal sealed class MainWindow : Window
 
     private void AddTask()
     {
-        if (Dialogs.EditTask(_app, "タスクを追加", null, _service.Projects(), _service.Today) is not { } r) return;
-        var t = _service.Add(r.Title, r.Project, r.Memo, r.Due, r.Priority);
+        if (Dialogs.EditTask(_app, "タスクを追加", null, _service.Projects(), _service.Activities(), _service.Today) is not { } r) return;
+        var t = _service.Add(r.Title, r.Project, r.Memo, r.Due, r.Priority, r.Activity);
         Refresh();
         if (_rowTasks.IndexOf(t) is var i and >= 0) _list.Value = i; // 絞り込みで見えないときは選択を動かさない
     }
@@ -610,8 +611,9 @@ internal sealed class MainWindow : Window
     private void EditTask()
     {
         if (Selected is not { } t) return;
-        if (Dialogs.EditTask(_app, "タスクを編集", new TaskInput(t.Title, t.Project, t.Memo, t.Due, t.Priority), _service.Projects()) is { } r)
-            _service.Edit(t.Id, r.Title, r.Project, r.Memo, r.Due, r.Priority);
+        if (Dialogs.EditTask(_app, "タスクを編集", new TaskInput(t.Title, t.Project, t.Activity, t.Memo, t.Due, t.Priority),
+                _service.Projects(), _service.Activities()) is { } r)
+            _service.Edit(t.Id, r.Title, r.Project, r.Activity, r.Memo, r.Due, r.Priority);
     }
 
     private void EditWorkLogs()

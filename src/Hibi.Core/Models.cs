@@ -11,8 +11,9 @@ public sealed class TaskData
     /// 4: DayRecord.TomorrowChosen を追加。
     /// 5: TomorrowChosen をやめ、DayRecord.TomorrowTaskIds が null なら「選んでいない」にした。
     /// 6: DayRecord.Problem / Try を追加（どちらも省略時は null）。
+    /// 7: TaskItem.Activity を追加（省略時は null）。
     /// </summary>
-    public const int CurrentSchemaVersion = 6;
+    public const int CurrentSchemaVersion = 7;
 
     public int SchemaVersion { get; set; } = CurrentSchemaVersion;
     public List<TaskItem> Tasks { get; set; } = [];
@@ -26,6 +27,10 @@ public sealed class TaskItem
     public Guid Id { get; set; } = Guid.NewGuid();
     public string Title { get; set; } = "";
     public string? Project { get; set; }
+
+    /// <summary>作業分類（設計・会議など）。名前は全プロジェクトで共通に使う。プロジェクトがなければ必ず null。</summary>
+    public string? Activity { get; set; }
+
     public string? Memo { get; set; }
 
     /// <summary>一覧での並び順（小さいほど上）。すべてのタスクで通しの番号。</summary>
@@ -46,6 +51,10 @@ public sealed class TaskItem
 
     public DateTimeOffset? CompletedAt { get; set; }
     public List<WorkLog> WorkLogs { get; set; } = [];
+
+    /// <summary>`プロジェクト/作業分類` の形（作業分類がなければプロジェクトだけ）。プロジェクトがなければ null。</summary>
+    [JsonIgnore]
+    public string? ProjectLabel => Project is null ? null : Activity is null ? Project : $"{Project}/{Activity}";
 
     [JsonIgnore]
     public bool IsCompleted => CompletedAt is not null;

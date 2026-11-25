@@ -13,7 +13,7 @@ public class SchemaV3Tests
         clock.Set(FakeClock.At(2026, 11, 6, 10, 0));
         Assert.True(svc.IsOnHold(t, 14));
 
-        svc.Edit(t.Id, "A2", null, "メモを足した", null, TaskPriority.Normal);
+        svc.Edit(t.Id, "A2", null, null, "メモを足した", null, TaskPriority.Normal);
 
         Assert.Equal(FakeClock.At(2026, 11, 6, 10, 0), t.UpdatedAt);
         Assert.Equal(new DateOnly(2026, 11, 6), svc.LastActivityDay(t));
@@ -111,7 +111,7 @@ public class SchemaV3Tests
         Assert.Equal(new DateOnly(2026, 11, 10), t.Due);
         Assert.Equal(TaskPriority.High, t.Priority);
 
-        svc.Edit(t.Id, "A", null, null, null, TaskPriority.Low);
+        svc.Edit(t.Id, "A", null, null, null, null, TaskPriority.Low);
         Assert.Null(t.Due);
         Assert.Equal(TaskPriority.Low, t.Priority);
     }

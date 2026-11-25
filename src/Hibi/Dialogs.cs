@@ -13,7 +13,7 @@ namespace Hibi;
 
 internal sealed record ReportInput(List<Guid> Tomorrow, DayNotes Notes);
 
-internal sealed record TaskInput(string Title, string? Project, string? Memo, DateOnly? Due, TaskPriority Priority);
+internal sealed record TaskInput(string Title, string? Project, string? Activity, string? Memo, DateOnly? Due, TaskPriority Priority);
 
 /// <summary>各種ダイアログ（要件 5.3）。</summary>
 internal static class Dialogs
@@ -87,19 +87,20 @@ internal static class Dialogs
     /// <summary>
     /// タスクの追加・編集。<paramref name="initial"/> が null なら空の状態から。
     /// <paramref name="quickAddToday"/> を渡すと（追加のとき）、タイトルの一行記法（<see cref="QuickAdd"/>）を読む。
-    /// 記法で書いたものは、ほかの欄より優先する。
+    /// 記法で書いたものは、ほかの欄より優先する。<paramref name="activities"/> は既存の作業分類（全プロジェクトで共通）。
     /// </summary>
     public static TaskInput? EditTask(IApplication app, string title, TaskInput? initial, IReadOnlyList<string> projects,
-        DateOnly? quickAddToday = null)
+        IReadOnlyList<string> activities, DateOnly? quickAddToday = null)
     {
         var taskTitle = initial?.Title;
         var project = initial?.Project;
+        var activity = initial?.Activity;
         var memo = initial?.Memo;
         var dueText = initial?.Due is { } due0 ? BusinessDayCalendar.Key(due0) : "";
         var priority = initial?.Priority ?? TaskPriority.Normal;
         while (true)
         {
-            using var d = new Dialog { Title = title, Width = Dim.Percent(80), Height = 24 };
+            using var d = new Dialog { Title = title, Width = Dim.Percent(80), Height = 26 };
 
             var titleField = new TextField { X = 14, Y = 0, Width = Dim.Fill(1), Text = taskTitle ?? "" };
             var projectField = new TextField { X = 14, Y = 2, Width = Dim.Fill(1), Text = project ?? "" };
@@ -114,16 +115,32 @@ internal static class Dialogs
             {
                 if (key != Key.CursorDown || projects.Count == 0) return;
                 key.Handled = true;
-                if (ChooseProject(app, projects, projectField.Text) is not { } chosen) return;
+                if (Choose(app, "プロジェクトを選ぶ", projects, projectField.Text) is not { } chosen) return;
                 projectField.Text = chosen;
                 projectField.MoveEnd();
             };
-            var dueField = new TextField { X = 14, Y = 5, Width = 12, Text = dueText };
-            var dueHint = new Label { X = 27, Y = 5, Text = "yyyy-MM-dd（空: 期限なし）" };
+            var activityField = new TextField { X = 14, Y = 4, Width = Dim.Fill(1), Text = activity ?? "" };
+            var activityHint = new Label
+            {
+                X = 14,
+                Y = 5,
+                Width = Dim.Fill(1),
+                Text = activities.Count > 0 ? "設計・会議など（空でもOK）。↓: 既存から選ぶ" : "設計・会議など（新しい名前を入力。空でもOK）",
+            };
+            activityField.KeyDown += (_, key) =>
+            {
+                if (key != Key.CursorDown || activities.Count == 0) return;
+                key.Handled = true;
+                if (Choose(app, "作業分類を選ぶ", activities, activityField.Text) is not { } chosen) return;
+                activityField.Text = chosen;
+                activityField.MoveEnd();
+            };
+            var dueField = new TextField { X = 14, Y = 7, Width = 12, Text = dueText };
+            var dueHint = new Label { X = 27, Y = 7, Text = "yyyy-MM-dd（空: 期限なし）" };
             var prioritySelector = new OptionSelector
             {
                 X = 14,
-                Y = 7,
+                Y = 9,
                 Orientation = Orientation.Horizontal,
                 Labels = Priorities.Select(PriorityLabel).ToList(),
                 Value = Array.IndexOf(Priorities, priority),
@@ -131,7 +148,7 @@ internal static class Dialogs
             var memoView = new TextView
             {
                 X = 14,
-                Y = 9,
+                Y = 11,
                 Width = Dim.Fill(1),
                 Height = Dim.Fill(1),
                 Text = memo ?? "",
@@ -144,21 +161,23 @@ internal static class Dialogs
                     X = 14,
                     Y = 1,
                     Width = Dim.Fill(1),
-                    Text = "タイトルに書いても入る:  #プロジェクト  !高 !低  @期限（11-25, 明日）",
+                    Text = "タイトルに書いても入る:  #プロジェクト/作業分類  !高 !低  @期限（11-25, 明日）",
                 });
             d.Add(
                 new Label { X = 1, Y = 0, Text = "タイトル" }, titleField,
                 new Label { X = 1, Y = 2, Text = "プロジェクト" }, projectField, hint,
-                new Label { X = 1, Y = 5, Text = "期限" }, dueField, dueHint,
-                new Label { X = 1, Y = 7, Text = "優先度" }, prioritySelector,
-                new Label { X = 1, Y = 9, Text = "メモ" }, memoView,
+                new Label { X = 1, Y = 4, Text = "作業分類" }, activityField, activityHint,
+                new Label { X = 1, Y = 7, Text = "期限" }, dueField, dueHint,
+                new Label { X = 1, Y = 9, Text = "優先度" }, prioritySelector,
+                new Label { X = 1, Y = 11, Text = "メモ" }, memoView,
                 new Label { X = 1, Y = Pos.AnchorEnd(1), Text = "Enter/Ctrl+S: OK  Tab: 次の欄  Esc: キャンセル" });
             titleField.SetFocus();
 
-            if (Show(app, d, [Ok, Cancel], titleField, projectField, dueField) != 0) return null;
+            if (Show(app, d, [Ok, Cancel], titleField, projectField, activityField, dueField) != 0) return null;
 
             taskTitle = titleField.Text;
             project = projectField.Text;
+            activity = activityField.Text;
             memo = memoView.Text;
             dueText = dueField.Text.Trim();
             priority = prioritySelector.Value is int pi && pi >= 0 && pi < Priorities.Length ? Priorities[pi] : TaskPriority.Normal;
@@ -168,7 +187,12 @@ internal static class Dialogs
                 // 読み取った結果を各欄の値にする（エラーで出し直したときも、記法ではなく中身で見える）
                 var q = QuickAdd.Parse(taskTitle, today);
                 taskTitle = q.Title;
-                project = q.Project ?? project;
+                if (q.Project is not null)
+                {
+                    // `#開発` だけなら作業分類の欄はそのまま、`#開発/設計` なら作業分類も記法のほう
+                    project = q.Project;
+                    activity = q.Activity ?? activity;
+                }
                 priority = q.Priority ?? priority;
                 if (q.Due is { } qd) dueText = BusinessDayCalendar.Key(qd);
             }
@@ -176,6 +200,11 @@ internal static class Dialogs
             if (string.IsNullOrWhiteSpace(taskTitle))
             {
                 Error(app, "タイトルを入力してください。");
+                continue;
+            }
+            if (string.IsNullOrWhiteSpace(project) && !string.IsNullOrWhiteSpace(activity))
+            {
+                Error(app, "作業分類を付けるときは、プロジェクトも入力してください。");
                 continue;
             }
             DateOnly? due = null;
@@ -188,24 +217,24 @@ internal static class Dialogs
                 }
                 due = parsed;
             }
-            return new TaskInput(taskTitle, project, memo, due, priority);
+            return new TaskInput(taskTitle, project, activity, memo, due, priority);
         }
     }
 
     /// <summary>
-    /// 既存のプロジェクトから1つ選ぶ。<paramref name="filter"/> を含むものだけ出す（該当なしなら全部）。
+    /// 既存のプロジェクト（や作業分類）から1つ選ぶ。<paramref name="filter"/> を含むものだけ出す（該当なしなら全部）。
     /// キャンセルなら null。
     /// </summary>
-    private static string? ChooseProject(IApplication app, IReadOnlyList<string> projects, string? filter)
+    private static string? Choose(IApplication app, string title, IReadOnlyList<string> names, string? filter)
     {
         var candidates = string.IsNullOrWhiteSpace(filter)
-            ? projects.ToList()
-            : projects.Where(p => p.Contains(filter.Trim(), StringComparison.OrdinalIgnoreCase)).ToList();
-        if (candidates.Count == 0) candidates = projects.ToList();
+            ? names.ToList()
+            : names.Where(p => p.Contains(filter.Trim(), StringComparison.OrdinalIgnoreCase)).ToList();
+        if (candidates.Count == 0) candidates = names.ToList();
 
         using var d = new Dialog
         {
-            Title = "プロジェクトを選ぶ",
+            Title = title,
             Width = Dim.Percent(50),
             // 枠2 + ボタン(影込み)2 + ダイアログの影1 + 説明ラベル1 = 約6行がリスト以外に使われる。
             // 足りないとリストの高さが0になり何も出ないので、1行余裕を持たせる
@@ -582,7 +611,7 @@ internal static class Dialogs
         void Reload()
         {
             rows.Clear();
-            foreach (var t in tasks) rows.Add(t.Project is { } p ? $"{t.Title}  #{p}" : t.Title);
+            foreach (var t in tasks) rows.Add(t.ProjectLabel is { } p ? $"{t.Title}  #{p}" : t.Title);
             for (var i = 0; i < tasks.Count; i++)
                 list.Source!.SetMark(i, chosen.Contains(tasks[i].Id));
             list.SetNeedsDraw();
@@ -597,7 +626,7 @@ internal static class Dialogs
             workedRows.Clear();
             foreach (var t in worked)
             {
-                var title = t.Project is { } p ? $"{t.Title}  #{p}" : t.Title;
+                var title = t.ProjectLabel is { } p ? $"{t.Title}  #{p}" : t.Title;
                 var done = t.CompletedAt is { } c && service.Calendar.DayOf(c) == day ? "完了 " : "";
                 var slots = ReportGenerator.TimeSlots(service.LogsIn(t, day, day));
                 workedRows.Add($"{done}{title} — {DurationFormat.Short(service.DurationOn(t, day))}{(slots.Length > 0 ? $"（{slots}）" : "")}");
@@ -618,10 +647,10 @@ internal static class Dialogs
 
         void AddFromDialog()
         {
-            if (EditTask(app, "明日の予定にタスクを追加", null, service.Projects(), service.Today) is not { } r) return;
+            if (EditTask(app, "明日の予定にタスクを追加", null, service.Projects(), service.Activities(), service.Today) is not { } r) return;
             // 印を今の状態から引き継ぐ
             Collect();
-            var t = service.Add(r.Title, r.Project, r.Memo, r.Due, r.Priority);
+            var t = service.Add(r.Title, r.Project, r.Memo, r.Due, r.Priority, r.Activity);
             tasks.Add(t);
             chosen.Add(t.Id);
             Reload();

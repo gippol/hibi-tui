@@ -175,15 +175,26 @@ public sealed class TaskService(TaskData data, BusinessDayCalendar calendar, Tim
             .Order(ProjectOrder)
             .ToList();
 
+    /// <summary>使われている作業分類名（全プロジェクトで共通）。並びはプロジェクト名と同じ。</summary>
+    public IReadOnlyList<string> Activities() =>
+        Data.Tasks
+            .Select(t => t.Activity)
+            .OfType<string>()
+            .Distinct(StringComparer.Ordinal)
+            .Order(ProjectOrder)
+            .ToList();
+
     // ---------- タスク ----------
 
+    /// <summary>タスクを足す。<paramref name="activity"/> はプロジェクトがなければ捨てる。</summary>
     public TaskItem Add(string title, string? project = null, string? memo = null,
-        DateOnly? due = null, TaskPriority priority = TaskPriority.Normal)
+        DateOnly? due = null, TaskPriority priority = TaskPriority.Normal, string? activity = null)
     {
         var task = new TaskItem
         {
             Title = RequireTitle(title),
             Project = Normalize(project),
+            Activity = Normalize(project) is null ? null : Normalize(activity),
             Memo = Normalize(memo),
             Due = due,
             Priority = priority,
@@ -195,12 +206,16 @@ public sealed class TaskService(TaskData data, BusinessDayCalendar calendar, Tim
         return task;
     }
 
-    /// <summary>タスクの中身を置き換える。期限と優先度も渡したもので置き換える（null の期限は「期限なし」）。</summary>
-    public void Edit(Guid id, string title, string? project, string? memo, DateOnly? due, TaskPriority priority)
+    /// <summary>
+    /// タスクの中身を置き換える。期限と優先度も渡したもので置き換える（null の期限は「期限なし」）。
+    /// <paramref name="activity"/> はプロジェクトがなければ捨てる。
+    /// </summary>
+    public void Edit(Guid id, string title, string? project, string? activity, string? memo, DateOnly? due, TaskPriority priority)
     {
         var task = Get(id);
         task.Title = RequireTitle(title);
         task.Project = Normalize(project);
+        task.Activity = task.Project is null ? null : Normalize(activity);
         task.Memo = Normalize(memo);
         task.Due = due;
         task.Priority = priority;
@@ -278,7 +293,7 @@ public sealed class TaskService(TaskData data, BusinessDayCalendar calendar, Tim
 
     /// <summary>
     /// 未完了タスクをプロジェクトごとにまとめる。プロジェクトは <see cref="ProjectOrder"/> の順、プロジェクトなしは最後。
-    /// 同じプロジェクトの中は今の並びのまま。<paramref name="among"/> を渡すと、それに当たるタスクだけを
+    /// 同じプロジェクトの中は作業分類ごとにまとめる（同じ順で、作業分類なしは最後）。同じ作業分類の中は今の並びのまま。<paramref name="among"/> を渡すと、それに当たるタスクだけを
     /// それらが今いる位置の中で並べ替え、ほかのタスクの位置は変えない。並びが変わらなければ false。
     /// </summary>
     public bool GroupOpenByProject(Func<TaskItem, bool>? among = null)
@@ -299,9 +314,13 @@ public sealed class TaskService(TaskData data, BusinessDayCalendar calendar, Tim
         return true;
     }
 
-    /// <summary>プロジェクト名の順、プロジェクトなしは最後。OrderBy は安定なので、同じプロジェクトの中は今の並びが残る。</summary>
+    /// <summary>
+    /// プロジェクト名の順、プロジェクトなしは最後。その中は作業分類名の順、作業分類なしは最後。
+    /// OrderBy は安定なので、同じ作業分類の中は今の並びが残る。
+    /// </summary>
     private static List<TaskItem> ByProject(IEnumerable<TaskItem> tasks) =>
-        tasks.OrderBy(t => t.Project is null).ThenBy(t => t.Project, ProjectOrder).ToList();
+        tasks.OrderBy(t => t.Project is null).ThenBy(t => t.Project, ProjectOrder)
+            .ThenBy(t => t.Activity is null).ThenBy(t => t.Activity, ProjectOrder).ToList();
 
     public void Complete(Guid id)
     {

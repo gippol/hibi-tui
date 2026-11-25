@@ -7,6 +7,9 @@ namespace Hibi.Core;
 public static class ReportGenerator
 {
     public const string NoProject = "その他";
+
+    /// <summary>作業分類のあるプロジェクトで、作業分類のないタスクをまとめる名前。</summary>
+    public const string NoActivity = "その他";
     private const string None = "なし";
 
     // 手で書く欄（ふり返り）。日報・週報・月報で同じ見出しを使い、空なら欄ごと出さない。
@@ -87,6 +90,7 @@ public static class ReportGenerator
         var now = service.Now;
         var byDay = new SortedDictionary<DateOnly, TimeSpan>();
         var byProject = new Dictionary<string, TimeSpan>(StringComparer.Ordinal);
+        var byActivity = new Dictionary<(string Project, string? Activity), TimeSpan>();
         foreach (var t in service.Data.Tasks)
             foreach (var l in service.LogsIn(t, from, to))
             {
@@ -95,6 +99,8 @@ public static class ReportGenerator
                 byDay[day] = byDay.GetValueOrDefault(day) + d;
                 var key = t.Project ?? "";
                 byProject[key] = byProject.GetValueOrDefault(key) + d;
+                if (t.Project is { } p)
+                    byActivity[(p, t.Activity)] = byActivity.GetValueOrDefault((p, t.Activity)) + d;
             }
         var total = byDay.Values.Aggregate(TimeSpan.Zero, (acc, d) => acc + d);
 
@@ -113,7 +119,15 @@ public static class ReportGenerator
         sb.Append("## プロジェクト別\n");
         if (byProject.Count == 0) sb.Append(None).Append('\n');
         foreach (var key in OrderProjects(byProject.Keys.Select(k => k.Length == 0 ? null : k)))
+        {
             sb.Append($"- {key ?? NoProject} — {DurationFormat.Short(byProject[key ?? ""])}\n");
+            // 作業分類の内訳は、そのプロジェクトに作業分類のある作業があったときだけ
+            if (key is null) continue;
+            var activities = byActivity.Keys.Where(k => k.Project == key).Select(k => k.Activity).ToList();
+            if (activities.All(s => s is null)) continue;
+            foreach (var activity in OrderActivities(activities))
+                sb.Append($"  - {activity ?? NoActivity} — {DurationFormat.Short(byActivity[(key, activity)])}\n");
+        }
 
         sb.Append("\n## 完了\n");
         // 累計は期間の末日まで（作り直しても、あとの作業で数字が変わらない）
@@ -180,6 +194,9 @@ public static class ReportGenerator
     private static IEnumerable<string?> OrderProjects(IEnumerable<string?> projects) =>
         projects.OrderBy(p => p is null ? 1 : 0).ThenBy(p => p, TaskService.ProjectOrder);
 
+    /// <summary>作業分類もプロジェクトと同じ順。作業分類なし（null）は最後。</summary>
+    private static IEnumerable<string?> OrderActivities(IEnumerable<string?> activities) => OrderProjects(activities);
+
     private static void AppendGrouped(StringBuilder sb, IReadOnlyList<TaskItem> tasks,
         Func<TaskItem, TimeSpan> duration, Func<TaskItem, TimeSpan> cumulative,
         Func<TaskItem, string>? suffix = null)
@@ -190,13 +207,28 @@ public static class ReportGenerator
             return;
         }
 
-        // グループ内は tasks の順を保つ。プロジェクトなし（null）は最後に「その他」として出す
+        // グループ内は tasks の順を保つ。プロジェクトなし（null）は最後に「その他」として出す。
+        // プロジェクトの中に作業分類のあるタスクがあれば `####` でもう1段分ける（作業分類なしは最後に「その他」）
         var groups = tasks.ToLookup(t => t.Project);
         foreach (var project in OrderProjects(groups.Select(g => g.Key)))
         {
             sb.Append($"### {project ?? NoProject}\n");
-            foreach (var t in groups[project])
-                sb.Append($"- {t.Title} — {DurationFormat.Short(duration(t))}（累計 {DurationFormat.Short(cumulative(t))}）{suffix?.Invoke(t)}\n");
+            var inProject = groups[project].ToList();
+            // 作業分類のあるタスクがなければ、今までどおりプロジェクトの下にそのまま並べる
+            if (inProject.All(t => t.Activity is null))
+            {
+                foreach (var t in inProject) AppendLine(t);
+                continue;
+            }
+            var activities = inProject.ToLookup(t => t.Activity);
+            foreach (var activity in OrderActivities(activities.Select(g => g.Key)))
+            {
+                sb.Append($"#### {activity ?? NoActivity}\n");
+                foreach (var t in activities[activity]) AppendLine(t);
+            }
         }
+
+        void AppendLine(TaskItem t) =>
+            sb.Append($"- {t.Title} — {DurationFormat.Short(duration(t))}（累計 {DurationFormat.Short(cumulative(t))}）{suffix?.Invoke(t)}\n");
     }
 }

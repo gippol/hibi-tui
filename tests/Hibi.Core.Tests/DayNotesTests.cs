@@ -114,7 +114,7 @@ public sealed class DayNotesTests : IDisposable
         var json = File.ReadAllText(store.DataPath);
         var loaded = store.Load();
 
-        Assert.Contains("\"schemaVersion\": 6", json);
+        Assert.Contains($"\"schemaVersion\": {TaskData.CurrentSchemaVersion}", json);
         Assert.Contains("\"problem\": \"課題\"", json);
         Assert.Contains("\"try\": \"学び\"", json);
         var day = loaded.Days["2026-11-06"];
@@ -138,7 +138,7 @@ public sealed class DayNotesTests : IDisposable
 
         var data = store.Load();
 
-        Assert.Equal(6, data.SchemaVersion);
+        Assert.Equal(TaskData.CurrentSchemaVersion, data.SchemaVersion);
         var day = data.Days["2026-11-06"];
         Assert.Null(day.Problem);
         Assert.Null(day.Try);

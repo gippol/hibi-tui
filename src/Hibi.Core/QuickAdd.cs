@@ -5,7 +5,8 @@ namespace Hibi.Core;
 /// <summary>
 /// タスクを追加するときのタイトルの一行記法。スペース（全角も）で区切った語のうち、次のものを取り出す。
 /// <list type="bullet">
-/// <item><c>#名前</c>: プロジェクト（<c>#123</c> のように数字だけなら番号とみてタイトルに残す）</item>
+/// <item><c>#名前</c> / <c>#名前/作業分類</c>: プロジェクトと作業分類（最初の <c>/</c> で分ける。
+/// <c>#123</c> のように数字だけなら番号とみてタイトルに残す）</item>
 /// <item><c>!</c> / <c>!高</c> / <c>!普通</c> / <c>!低</c>: 優先度</item>
 /// <item><c>@今日</c> / <c>@明日</c> / <c>@yyyy-M-d</c> / <c>@M-d</c>（<c>/</c> 区切りも可）: 期限。
 /// 月日だけで今日より前なら来年にする</item>
@@ -15,11 +16,12 @@ namespace Hibi.Core;
 public static class QuickAdd
 {
     /// <summary>取り出した結果。書かれていなかったものは null。</summary>
-    public sealed record Result(string Title, string? Project, DateOnly? Due, TaskPriority? Priority);
+    public sealed record Result(string Title, string? Project, string? Activity, DateOnly? Due, TaskPriority? Priority);
 
     public static Result Parse(string text, DateOnly today)
     {
         string? project = null;
+        string? activity = null;
         DateOnly? due = null;
         TaskPriority? priority = null;
         var rest = new List<string>();
@@ -27,7 +29,7 @@ public static class QuickAdd
 
         foreach (var word in text.Split((char[]?)null, StringSplitOptions.RemoveEmptyEntries))
         {
-            if (AsProject(word) is { } p) project = p;
+            if (AsProject(word) is { } p) (project, activity) = p;
             else if (AsPriority(word) is { } pr) priority = pr;
             else if (AsDue(word, today) is { } d) due = d;
             else
@@ -40,11 +42,20 @@ public static class QuickAdd
 
         // 記法がなければ、全角スペースなども含めて打ったとおりのタイトルにする
         var title = consumed ? string.Join(' ', rest) : text.Trim();
-        return new Result(title, project, due, priority);
+        return new Result(title, project, activity, due, priority);
     }
 
-    private static string? AsProject(string word) =>
-        word.Length > 1 && word[0] == '#' && !word[1..].All(char.IsAsciiDigit) ? word[1..] : null;
+    /// <summary>`#名前` か `#名前/作業分類`。`/` の後ろが空なら作業分類なし。名前が空（`#/設計`）なら記法とみない。</summary>
+    private static (string Project, string? Activity)? AsProject(string word)
+    {
+        if (word.Length < 2 || word[0] != '#' || word[1..].All(char.IsAsciiDigit)) return null;
+        var body = word[1..];
+        var slash = body.IndexOf('/');
+        if (slash < 0) return (body, null);
+        if (slash == 0) return null;
+        var activity = body[(slash + 1)..];
+        return (body[..slash], activity.Length == 0 ? null : activity);
+    }
 
     private static TaskPriority? AsPriority(string word) => word switch
     {
