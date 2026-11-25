@@ -86,11 +86,13 @@ public static class ReportGenerator
             .OrderBy(t => service.LogsIn(t, from, to).Min(l => l.Start))
             .ToList();
 
-        // 日別・プロジェクト別の合計（秒単位で足してから表示で切り捨てる, 4.4.3）
+        // 日別・プロジェクト別・作業分類別の合計（秒単位で足してから表示で切り捨てる, 4.4.3）
         var now = service.Now;
         var byDay = new SortedDictionary<DateOnly, TimeSpan>();
         var byProject = new Dictionary<string, TimeSpan>(StringComparer.Ordinal);
         var byActivity = new Dictionary<(string Project, string? Activity), TimeSpan>();
+        // プロジェクトをまたいだ作業分類ごとの合計。作業分類なし（プロジェクトなしも）は "" に入れる
+        var byActivityOnly = new Dictionary<string, TimeSpan>(StringComparer.Ordinal);
         foreach (var t in service.Data.Tasks)
             foreach (var l in service.LogsIn(t, from, to))
             {
@@ -101,6 +103,8 @@ public static class ReportGenerator
                 byProject[key] = byProject.GetValueOrDefault(key) + d;
                 if (t.Project is { } p)
                     byActivity[(p, t.Activity)] = byActivity.GetValueOrDefault((p, t.Activity)) + d;
+                var activityKey = t.Activity ?? "";
+                byActivityOnly[activityKey] = byActivityOnly.GetValueOrDefault(activityKey) + d;
             }
         var total = byDay.Values.Aggregate(TimeSpan.Zero, (acc, d) => acc + d);
 
@@ -127,6 +131,14 @@ public static class ReportGenerator
             if (activities.All(s => s is null)) continue;
             foreach (var activity in OrderActivities(activities))
                 sb.Append($"  - {activity ?? NoActivity} — {DurationFormat.Short(byActivity[(key, activity)])}\n");
+        }
+
+        // 作業分類別: 期間に作業分類のある作業がなければ欄ごと出さない（作業分類を使っていない人には要らない）
+        if (byActivityOnly.Keys.Any(k => k.Length > 0))
+        {
+            sb.Append("\n## 作業分類別\n");
+            foreach (var key in OrderActivities(byActivityOnly.Keys.Select(k => k.Length == 0 ? null : k)))
+                sb.Append($"- {key ?? NoActivity} — {DurationFormat.Short(byActivityOnly[key ?? ""])}\n");
         }
 
         sb.Append("\n## 完了\n");

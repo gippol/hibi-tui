@@ -56,7 +56,10 @@ public sealed class TaskService(TaskData data, BusinessDayCalendar calendar, Tim
         Data.Tasks.Aggregate(TimeSpan.Zero, (acc, t) => acc + DurationOn(t, day));
 
     /// <summary>最後に触った業務日: 作成・手での変更（UpdatedAt）・作業記録の開始と終了のうち、いちばん新しい日。</summary>
-    public DateOnly LastActivityDay(TaskItem task)
+    public DateOnly LastActivityDay(TaskItem task) => Calendar.DayOf(LastTouched(task));
+
+    /// <summary>最後に触った日時（<see cref="LastActivityDay"/> の元）。</summary>
+    private DateTimeOffset LastTouched(TaskItem task)
     {
         var last = task.UpdatedAt is { } u && u > task.CreatedAt ? u : task.CreatedAt;
         foreach (var l in task.WorkLogs)
@@ -65,7 +68,7 @@ public sealed class TaskService(TaskData data, BusinessDayCalendar calendar, Tim
             if (t > last) last = t;
             if (l.Start > last) last = l.Start;
         }
-        return Calendar.DayOf(last);
+        return last;
     }
 
     /// <summary>
@@ -175,14 +178,38 @@ public sealed class TaskService(TaskData data, BusinessDayCalendar calendar, Tim
             .Order(ProjectOrder)
             .ToList();
 
-    /// <summary>使われている作業分類名（全プロジェクトで共通）。並びはプロジェクト名と同じ。</summary>
+    /// <summary>
+    /// 使われている作業分類名（全プロジェクトで共通）。最近使った順: その作業分類のタスクを最後に触った日時
+    /// （<see cref="LastActivityDay"/> と同じく作業・編集・作成）の新しい順。同じならプロジェクト名と同じ順。
+    /// </summary>
     public IReadOnlyList<string> Activities() =>
         Data.Tasks
-            .Select(t => t.Activity)
-            .OfType<string>()
-            .Distinct(StringComparer.Ordinal)
-            .Order(ProjectOrder)
+            .Where(t => t.Activity is not null)
+            .GroupBy(t => t.Activity!, StringComparer.Ordinal)
+            .Select(g => (Name: g.Key, Last: g.Max(LastTouched)))
+            .OrderByDescending(x => x.Last)
+            .ThenBy(x => x.Name, ProjectOrder)
+            .Select(x => x.Name)
             .ToList();
+
+    /// <summary>
+    /// <paramref name="names"/> の中から、<paramref name="name"/> と表記だけ違うもの（全角半角・大文字小文字・空白）を探す。
+    /// まったく同じものがあれば、または似たものがなければ null。新しい名前を作る前に表記ゆれを知らせるのに使う。
+    /// </summary>
+    public static string? FindSimilarName(IEnumerable<string> names, string name)
+    {
+        var key = LooseKey(name);
+        string? similar = null;
+        foreach (var n in names)
+        {
+            if (n == name.Trim()) return null;
+            if (similar is null && LooseKey(n) == key) similar = n;
+        }
+        return similar;
+    }
+
+    private static string LooseKey(string s) =>
+        string.Concat(s.Normalize(System.Text.NormalizationForm.FormKC).Where(c => !char.IsWhiteSpace(c))).ToLowerInvariant();
 
     // ---------- タスク ----------
 

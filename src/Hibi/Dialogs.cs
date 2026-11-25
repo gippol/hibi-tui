@@ -125,7 +125,7 @@ internal static class Dialogs
                 X = 14,
                 Y = 5,
                 Width = Dim.Fill(1),
-                Text = activities.Count > 0 ? "設計・会議など（空でもOK）。↓: 既存から選ぶ" : "設計・会議など（新しい名前を入力。空でもOK）",
+                Text = activities.Count > 0 ? "設計・会議など（空でもOK）。↓: 既存から選ぶ（最近使った順）" : "設計・会議など（新しい名前を入力。空でもOK）",
             };
             activityField.KeyDown += (_, key) =>
             {
@@ -207,6 +207,8 @@ internal static class Dialogs
                 Error(app, "作業分類を付けるときは、プロジェクトも入力してください。");
                 continue;
             }
+            if (ConfirmNewActivity(app, activities, activity) is not { } confirmed) continue;
+            activity = confirmed;
             DateOnly? due = null;
             if (dueText.Length > 0)
             {
@@ -219,6 +221,27 @@ internal static class Dialogs
             }
             return new TaskInput(taskTitle, project, activity, memo, due, priority);
         }
+    }
+
+    /// <summary>
+    /// 作業分類が既存にない名前なら、表記ゆれを防ぐために確認する。使う名前を返す（戻るなら null）。
+    /// 全角半角・大文字小文字・空白だけ違う既存の名前があれば、そちらを使うか聞く。
+    /// </summary>
+    private static string? ConfirmNewActivity(IApplication app, IReadOnlyList<string> activities, string? activity)
+    {
+        if (string.IsNullOrWhiteSpace(activity)) return "";
+        var name = activity.Trim();
+        if (activities.Contains(name, StringComparer.Ordinal)) return name;
+
+        if (TaskService.FindSimilarName(activities, name) is { } similar)
+            return MessageBox.Query(app, "新しい作業分類",
+                    $"「{name}」は、既存の「{similar}」と表記だけ違います。", $"「{similar}」を使う", $"「{name}」を作る", "戻る") switch
+                {
+                    0 => similar,
+                    1 => name,
+                    _ => null,
+                };
+        return Confirm(app, "新しい作業分類", $"新しい作業分類「{name}」を作りますか？", "作る", "戻る") ? name : null;
     }
 
     /// <summary>

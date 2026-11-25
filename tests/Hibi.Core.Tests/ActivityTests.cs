@@ -45,7 +45,39 @@ public class ActivityTests
 
         svc.Add("F", "営業", activity: "設計");
 
+        // 作ったのが同じ時刻なら名前の順
         Assert.Equal(["実装", "見積", "設計"], svc.Activities());
+    }
+
+    [Fact]
+    public void 作業分類の候補は最近使った順()
+    {
+        var (svc, clock) = Fixture.Create(FakeClock.At(2026, 11, 2, 9, 0));
+        var meeting = svc.Add("定例", "開発", activity: "会議");
+        var design = svc.Add("画面設計", "開発", activity: "設計");
+        clock.Set(FakeClock.At(2026, 11, 3, 9, 0));
+        svc.Add("見積", "営業", activity: "見積");          // 作っただけ
+        Work(svc, clock, design, FakeClock.At(2026, 11, 4, 9, 0), TimeSpan.FromMinutes(30));
+        Work(svc, clock, meeting, FakeClock.At(2026, 11, 5, 9, 0), TimeSpan.FromMinutes(30));
+
+        Assert.Equal(["会議", "設計", "見積"], svc.Activities());
+    }
+
+    [Theory]
+    [InlineData("ＭＴＧ", "MTG")]
+    [InlineData("mtg", "MTG")]
+    [InlineData("コード レビュー", "コードレビュー")]
+    [InlineData(" ｺｰﾄﾞﾚﾋﾞｭｰ", "コードレビュー")]
+    public void 表記だけ違う既存の名前を見つける(string typed, string existing)
+    {
+        Assert.Equal(existing, TaskService.FindSimilarName(["設計", existing], typed));
+    }
+
+    [Fact]
+    public void 同じ名前か似た名前がなければ見つけない()
+    {
+        Assert.Null(TaskService.FindSimilarName(["MTG", "mtg"], "mtg"));
+        Assert.Null(TaskService.FindSimilarName(["設計"], "会議"));
     }
 
     // ---------- 一行記法 ----------
@@ -175,6 +207,48 @@ public class ActivityTests
             - その他 — 0h05m
 
             """.ReplaceLineEndings("\n"), md);
+    }
+
+    [Fact]
+    public void 月報に作業分類別の合計をプロジェクトをまたいで出す()
+    {
+        var (svc, clock) = Fixture.Create(FakeClock.At(2026, 11, 6, 9, 0));
+        var devDesign = svc.Add("画面設計", "開発", activity: "設計");
+        var salesDesign = svc.Add("提案書の構成", "営業", activity: "設計");
+        var meeting = svc.Add("定例", "開発", activity: "会議");
+        var misc = svc.Add("雑務", "開発");
+        var other = svc.Add("問い合わせ");
+
+        Work(svc, clock, devDesign, FakeClock.At(2026, 11, 6, 9, 0), TimeSpan.FromMinutes(60));
+        Work(svc, clock, salesDesign, FakeClock.At(2026, 11, 6, 10, 0), TimeSpan.FromMinutes(30));
+        Work(svc, clock, meeting, FakeClock.At(2026, 11, 6, 11, 0), TimeSpan.FromMinutes(45));
+        Work(svc, clock, misc, FakeClock.At(2026, 11, 6, 13, 0), TimeSpan.FromMinutes(10));
+        Work(svc, clock, other, FakeClock.At(2026, 11, 6, 14, 0), TimeSpan.FromMinutes(5));
+
+        var md = ReportGenerator.GenerateMonthly(svc, new DateOnly(2026, 11, 6));
+
+        // 作業分類なし（プロジェクトなしも）は「その他」で最後。足すと稼働合計になる
+        Assert.Contains(
+            """
+            ## 作業分類別
+            - 会議 — 0h45m
+            - 設計 — 1h30m
+            - その他 — 0h15m
+
+            ## 完了
+            """.ReplaceLineEndings("\n"), md);
+    }
+
+    [Fact]
+    public void 作業分類を使っていなければ作業分類別の欄は出さない()
+    {
+        var (svc, clock) = Fixture.Create(FakeClock.At(2026, 11, 6, 9, 0));
+        var t = svc.Add("見積", "営業");
+        Work(svc, clock, t, FakeClock.At(2026, 11, 6, 9, 0), TimeSpan.FromMinutes(30));
+
+        var md = ReportGenerator.GenerateMonthly(svc, new DateOnly(2026, 11, 6));
+
+        Assert.DoesNotContain("作業分類別", md);
     }
 
     // ---------- 保存 ----------
