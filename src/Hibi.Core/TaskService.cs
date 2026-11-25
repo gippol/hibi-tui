@@ -382,6 +382,53 @@ public sealed class TaskService(TaskData data, BusinessDayCalendar calendar, Tim
         OnChanged();
     }
 
+    /// <summary>
+    /// <paramref name="start"/> からさかのぼって計測を始める（開始の押し忘れの修正）。
+    /// 別のタスクが計測中なら、それを <paramref name="start"/> で止める。同じタスクが計測中なら、その開始を早める・遅らせる。
+    /// ほかの作業記録と重なる時刻、未来の時刻、計測中の別のタスクの開始より前は指定できない。
+    /// </summary>
+    public void StartAt(Guid id, DateTimeOffset start)
+    {
+        var task = Get(id);
+        if (task.IsCompleted)
+            throw new InvalidOperationException("完了したタスクのタイマーは開始できません。");
+        if (start > Now)
+            throw new ArgumentException("開始時刻に未来の時刻は指定できません。");
+
+        var running = Running;
+        if (running is { } r && r.Task != task && start <= r.Log.Start)
+            throw new ArgumentException(
+                $"「{r.Task.Title}」を {r.Log.Start:HH:mm} から計測中です。それより後の時刻にしてください。");
+        if (LatestEnd(except: running?.Log) is { } end && start < end.At)
+            throw new ArgumentException(
+                $"「{end.Task.Title}」の作業記録（{end.At:HH:mm} まで）と重なります。{end.At:HH:mm} 以降にしてください。");
+
+        if (running is { } same && same.Task == task)
+        {
+            same.Log.Start = start;
+        }
+        else
+        {
+            if (running is { } other) FinishLog(other.Task, other.Log, start);
+            task.WorkLogs.Add(new WorkLog { Start = start });
+        }
+        task.OnHold = false; // 作業を始めたら保留ではない
+        OnChanged();
+    }
+
+    /// <summary>
+    /// 止めた作業記録のうち、終了がいちばん新しいもの（さかのぼって開始するときの目安）。<paramref name="except"/> は除く。
+    /// </summary>
+    public (TaskItem Task, DateTimeOffset At)? LatestEnd(WorkLog? except = null)
+    {
+        (TaskItem Task, DateTimeOffset At)? latest = null;
+        foreach (var t in Data.Tasks)
+            foreach (var l in t.WorkLogs)
+                if (l != except && l.End is { } e && (latest is null || e > latest.Value.At))
+                    latest = (t, e);
+        return latest;
+    }
+
     public void Stop()
     {
         if (StopCore()) OnChanged();

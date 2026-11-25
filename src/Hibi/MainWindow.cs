@@ -1,4 +1,5 @@
 using System.Collections.ObjectModel;
+using System.Globalization;
 using Hibi.Core;
 using Terminal.Gui.App;
 using Terminal.Gui.Input;
@@ -313,7 +314,16 @@ internal sealed class MainWindow : Window
             : $"{AppTitle}  {BusinessDayCalendar.Key(_shownDay)}（{BusinessDayCalendar.JaWeekday(_shownDay)}）";
         if (_service.TotalDurationOn(_shownDay) > WellDoneAfter) title += "  おつかれさま";
         Title = title;
+
+        // ターミナルのタブ・タスクバー: 切れても状態が分かるように、印と時間を先に置く。時間は分まで（今日の合計）
+        ConsoleTitle.Set(_service.Running is { } running
+            ? $"▶ {ShortClock(_service.DurationOn(running.Task, _service.Today))} {running.Task.Title} - hibi"
+            : "⏸ 停止中 - hibi");
     }
+
+    /// <summary>`0:42` 形式（時間:分）。</summary>
+    private static string ShortClock(TimeSpan d) =>
+        d < TimeSpan.Zero ? "0:00" : $"{(long)d.TotalHours}:{d.Minutes:00}";
 
     private void UpdateDetail()
     {
@@ -385,6 +395,7 @@ internal sealed class MainWindow : Window
             : key.AsRune.Value == '-' ? () => ChangePriority(-1)
             : key == Key.A ? AddTask
             : key == Key.Enter ? ToggleTimer
+            : key == Key.Enter.WithShift ? StartFromTime
             : key == Key.D ? ToggleComplete
             : key == Key.E ? EditTask
             : key == Key.T ? EditWorkLogs
@@ -416,6 +427,7 @@ internal sealed class MainWindow : Window
           a              追加
           e              編集（タイトル・プロジェクト・作業分類・期限・優先度・メモ）
           Enter          タイマーを開始 / 停止
+          Shift+Enter    さかのぼって開始（9:30 / -15 などの時刻から）
           d              完了にする / 完了を取り消す
           t              作業記録を修正
           x              削除
@@ -594,6 +606,44 @@ internal sealed class MainWindow : Window
     private void ToggleTimer()
     {
         if (Selected is { } t) _service.Toggle(t.Id);
+    }
+
+    /// <summary>
+    /// 開始を押し忘れたとき: 時刻を聞いて、その時刻から計測を始める。
+    /// 入力欄の最初の値は、同じタスクが計測中ならその開始、そうでなければ最後に止めた時刻（12時間以内なら）。
+    /// </summary>
+    private void StartFromTime()
+    {
+        if (Selected is not { } t) return;
+        if (t.IsCompleted)
+            throw new InvalidOperationException("完了したタスクのタイマーは開始できません。");
+
+        var now = _service.Now;
+        var running = _service.Running;
+        var last = _service.LatestEnd(except: running?.Log);
+        string Clock(DateTimeOffset at) => at.ToString(at.Date == now.Date ? "H:mm" : "yyyy-MM-dd HH:mm", CultureInfo.InvariantCulture);
+
+        string initial;
+        string? hint;
+        if (running is { } same && same.Task == t)
+        {
+            initial = Clock(same.Log.Start);
+            hint = $"いま計測中（{Clock(same.Log.Start)} から）。開始時刻を直します。";
+        }
+        else if (last is { } l && now - l.At <= TimeSpan.FromHours(12))
+        {
+            initial = Clock(l.At);
+            hint = $"最後に止めた時刻: {Clock(l.At)}（{l.Task.Title}）";
+        }
+        else
+        {
+            initial = "-15";
+            hint = null;
+        }
+        if (running is { } other && other.Task != t)
+            hint = $"いま計測中の「{other.Task.Title}」は、入れた時刻で止めます。";
+
+        Dialogs.AskStartTime(_app, t.Title, initial, hint, () => _service.Now, at => _service.StartAt(t.Id, at));
     }
 
     private void ToggleComplete()

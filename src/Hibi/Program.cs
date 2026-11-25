@@ -90,6 +90,8 @@ app.Run(main, ex =>
     }
 });
 
+ConsoleTitle.Restore();
+
 if (fatal is not null)
 {
     Console.Error.WriteLine($"予期しないエラーが続いたため終了しました: {fatal.Message}");

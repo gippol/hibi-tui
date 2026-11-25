@@ -367,6 +367,38 @@ internal static class Dialogs
 
     // ---------- 日時の入力 ----------
 
+    /// <summary>
+    /// さかのぼって開始する時刻を聞く（<see cref="StartTimeText"/> の形）。<paramref name="apply"/> がエラーなら出し直す。
+    /// </summary>
+    public static void AskStartTime(IApplication app, string taskTitle, string initial, string? hint,
+        Func<DateTimeOffset> now, Action<DateTimeOffset> apply)
+    {
+        var text = initial;
+        while (true)
+        {
+            using var d = new Dialog { Title = "さかのぼって開始", Width = 64, Height = 12 };
+            var field = new TextField { X = 1, Y = 2, Width = 24, Text = text };
+            d.Add(
+                new Label { X = 1, Y = 0, Width = Dim.Fill(1), Text = $"「{taskTitle}」をいつから始めた？" },
+                new Label { X = 1, Y = 1, Text = "9:30 / -15（15分前）/ 2026-11-26 09:30" },
+                field,
+                new Label { X = 1, Y = 4, Width = Dim.Fill(1), Text = hint ?? "" });
+            field.SetFocus();
+            if (Show(app, d, ["開始", Cancel], field) != 0) return;
+
+            text = field.Text;
+            try
+            {
+                apply(StartTimeText.Parse(text, now()));
+                return;
+            }
+            catch (Exception ex) when (ex is FormatException or ArgumentException)
+            {
+                Error(app, ex.Message);
+            }
+        }
+    }
+
     public static void AskDateTime(IApplication app, string title, string prompt, DateTimeOffset initial,
         Action<DateTimeOffset> apply)
     {
