@@ -66,6 +66,7 @@
 | F-T-07 | 完了したタスクは、その業務日のあいだ「今日の完了」に表示する。次の業務日になったら一覧から消す（データは残す） |
 | F-T-08 | メモは自分用の詳細で、日報には載せない |
 | F-T-09 | メモに書いた URL（http / https）・ファイル・フォルダのパスを開ける。開く前に必ず行き先を見せて確認する。ファイルは文書・画像など許可した拡張子だけ直接開き、ほかはエクスプローラーで場所を見せるだけにする。ネットワーク上の場所はつなぐ前に確認する（v1 のあとに追加） |
+| F-T-10 | 古い完了タスク（最後に触ってから `archiveAfterDays`（既定 90）日以上）をアーカイブ（`archive\tasks-YYYY.json`）に移せる。移したものは一覧・候補に出ないが、過去の日報・週報・月報には入る。移す前に確認し、バックアップを取る（v1 のあとに追加） |
 
 ### 4.2 作業時間の記録
 
@@ -313,6 +314,7 @@
 | `t` | 作業記録を修正する（ダイアログ） |
 | `x` | タスクを削除する（確認あり） |
 | `l` | メモのリンクを開く（F-T-09。いくつもあれば選ぶ。確認あり） |
+| `Shift+X` | 古い完了タスクをアーカイブに移す（F-T-10。確認あり） |
 | `Ctrl+↑` / `Ctrl+↓` | 詳細欄のメモをスクロールする（`Ctrl+PageUp` / `Ctrl+PageDown` で1画面分） |
 | `Shift+↑` / `Shift+↓` | 未完了タスクを区切りの中で並べ替える。`[今日の予定]` では、前の業務日の日報で選んだ予定（`tomorrowTaskIds`）の順を変える |
 | `s` | 見えている未完了タスクを区切りごとにプロジェクトでまとめて並べ替える（プロジェクトは 4.4.2 と同じ順で、プロジェクトなしは最後。同じプロジェクトの中は作業分類でまとめ（同じ順で、作業分類なしは最後）、同じ作業分類の中は今の並びのまま。`[今日の予定]` は選んだ予定の順を変える。たたんだ `[保留]` は動かさない） |
@@ -346,6 +348,7 @@
 | タスクデータ | `%APPDATA%\hibi\tasks.json` |
 | 設定 | `%APPDATA%\hibi\config.json` |
 | バックアップ | `%APPDATA%\hibi\backup\tasks.YYYYMMDD-HHmmss.json` |
+| アーカイブ | `%APPDATA%\hibi\archive\tasks-YYYY.json`（F-T-10。データと同じフォルダ。形は tasks.json と同じで `days` は空） |
 | 日報 | `%USERPROFILE%\Documents\hibi\reports\YYYY-MM-DD.md` |
 | 月報 | `%USERPROFILE%\Documents\hibi\reports\YYYY-MM.md` |
 
@@ -353,7 +356,7 @@
 
 ```json
 {
-  "schemaVersion": 7,
+  "schemaVersion": 8,
   "tasks": [
     {
       "id": "0b9c...（GUID）",
@@ -397,6 +400,8 @@
   - 4: `days` の各日に `tomorrowChosen`（その日に明日の予定を選んだか）を追加。何も選ばずに日報を出した日も true で、所感だけ書いた日は false。v3 以前は `tomorrowTaskIds` が空でない日だけ true にする
   - 5: `tomorrowChosen` をやめ、選んでいない日は `tomorrowTaskIds` を `null` にする。v4 以前は、選んだ印がある日・予定が空でない日・所感もない日（日報を出した日）を選んだことにし、残り（所感があって予定が空の日）を `null` にする
   - 6: `days` の各日に `problem`（課題・困ったこと）と `try`（学び・改善）を追加。どちらも書いていなければ `null`。v5 以前は両方 `null` で読む
+  - 7: タスクに `activity`（作業分類）を追加。v6 以前は `null` で読む
+  - 8: `archivedThrough`（F-T-10。アーカイブに移したタスクを最後に触った業務日のうち、いちばん新しい日。何も移していなければ `null`）を追加。これより前の期間の報告だけアーカイブを読み足す。v7 以前は `null` で読む
 
 ### 6.3 config.json
 
@@ -406,7 +411,8 @@
   "reportDirectory": "%USERPROFILE%\\Documents\\hibi\\reports",
   "dayBoundary": "04:00",
   "forgottenTimerWarningHours": 8,
-  "staleTaskDays": 14
+  "staleTaskDays": 14,
+  "archiveAfterDays": 90
 }
 ```
 
@@ -417,6 +423,7 @@
 | `dayBoundary` | 業務日の切り替わり時刻 | `04:00` |
 | `forgottenTimerWarningHours` | 止め忘れを警告するまでの時間 | `8` |
 | `staleTaskDays` | この業務日数のあいだ触っていない未完了タスクを保留にする（4.8）。`0` なら使わない | `14` |
+| `archiveAfterDays` | 完了して、この日数のあいだ触っていないタスクを `Shift+X` でアーカイブに移す（F-T-10）。1 以上 | `90` |
 
 - config.json がなければ、既定値で作る
 - 設定画面（`c`）で保存すると、config.json を今の値で書き直す
@@ -446,7 +453,7 @@
 |---|---|
 | N-U-01 | 主な操作は1キーでできる |
 | N-U-02 | 日本語（全角文字）がずれずに表示される |
-| N-U-03 | 削除と完了の取り消し、外のもの（URL・ファイル）を開くとき以外は、確認ダイアログを出さない |
+| N-U-03 | 削除と完了の取り消し、外のもの（URL・ファイル）を開くとき、アーカイブ以外は、確認ダイアログを出さない |
 
 ### 7.4 配布
 | ID | 要件 |

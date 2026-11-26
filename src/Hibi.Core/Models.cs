@@ -12,14 +12,21 @@ public sealed class TaskData
     /// 5: TomorrowChosen をやめ、DayRecord.TomorrowTaskIds が null なら「選んでいない」にした。
     /// 6: DayRecord.Problem / Try を追加（どちらも省略時は null）。
     /// 7: TaskItem.Activity を追加（省略時は null）。
+    /// 8: ArchivedThrough を追加（省略時は null）。
     /// </summary>
-    public const int CurrentSchemaVersion = 7;
+    public const int CurrentSchemaVersion = 8;
 
     public int SchemaVersion { get; set; } = CurrentSchemaVersion;
     public List<TaskItem> Tasks { get; set; } = [];
 
     /// <summary>業務日（yyyy-MM-dd）ごとの記録。</summary>
     public Dictionary<string, DayRecord> Days { get; set; } = [];
+
+    /// <summary>
+    /// アーカイブに移したタスクを最後に触った業務日のうち、いちばん新しい日（<see cref="TaskArchive"/>）。
+    /// これより後の期間の報告ではアーカイブを読まない。null なら何も移していない。
+    /// </summary>
+    public DateOnly? ArchivedThrough { get; set; }
 }
 
 public sealed class TaskItem

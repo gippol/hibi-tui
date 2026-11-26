@@ -652,4 +652,42 @@ public sealed class TaskService(TaskData data, BusinessDayCalendar calendar, Tim
     }
 
     private void OnChanged() => Changed?.Invoke();
+
+    // ---------- アーカイブ（TaskArchive） ----------
+
+    /// <summary>最後に触った業務日。<see cref="LastActivityDay"/> に完了も入れたもの（完了は UpdatedAt を変えないため）。</summary>
+    public DateOnly LastTouchedDay(TaskItem task)
+    {
+        var last = LastActivityDay(task);
+        return task.CompletedAt is { } c && Calendar.DayOf(c) > last ? Calendar.DayOf(c) : last;
+    }
+
+    /// <summary>アーカイブしてよいもの: 完了していて、最後に触ってから <paramref name="keepDays"/> 日以上たったもの。</summary>
+    public IReadOnlyList<TaskItem> ArchiveCandidates(int keepDays) =>
+        Data.Tasks
+            .Where(t => t.IsCompleted && !t.IsRunning && Today.DayNumber - LastTouchedDay(t).DayNumber >= keepDays)
+            .ToList();
+
+    /// <summary>アーカイブに移したタスクを外す。日ごとの記録（明日の予定）は過去の日報のために残す。</summary>
+    public void RemoveArchived(IReadOnlyCollection<Guid> ids)
+    {
+        if (Data.Tasks.RemoveAll(t => ids.Contains(t.Id)) > 0) OnChanged();
+    }
+
+    /// <summary>
+    /// 今のタスクに <paramref name="archived"/> を足した、読むだけ用のサービス（過去の日報・週報・月報に使う）。
+    /// 今のタスクと日ごとの記録は同じものを指す。id が今のタスクと重なるものは今のほうを使う。
+    /// これを通して変えても保存はされない。
+    /// </summary>
+    public TaskService WithArchived(IEnumerable<TaskItem> archived)
+    {
+        var ids = Data.Tasks.Select(t => t.Id).ToHashSet();
+        var merged = new TaskData
+        {
+            SchemaVersion = Data.SchemaVersion,
+            Tasks = [.. Data.Tasks, .. archived.Where(t => ids.Add(t.Id))],
+            Days = Data.Days,
+        };
+        return new TaskService(merged, Calendar, clock);
+    }
 }

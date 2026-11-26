@@ -270,7 +270,7 @@ public class ActivityTests
                 """);
 
             var data = store.Load();
-            Assert.Equal(7, data.SchemaVersion);
+            Assert.Equal(TaskData.CurrentSchemaVersion, data.SchemaVersion);
             Assert.Null(data.Tasks[0].Activity);
 
             data.Tasks[0].Activity = "設計";

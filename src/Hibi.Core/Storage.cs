@@ -15,6 +15,9 @@ public sealed class AppConfig
     /// <summary>この業務日数のあいだ触っていない未完了タスクを [保留] にまとめる。0 なら使わない。</summary>
     public int StaleTaskDays { get; set; } = 14;
 
+    /// <summary>完了して最後に触ってからこの日数以上たったタスクを、Shift+X でアーカイブに移す（<see cref="TaskArchive"/>）。</summary>
+    public int ArchiveAfterDays { get; set; } = 90;
+
     [JsonIgnore] public string DataDirectoryPath => Expand(DataDirectory);
     [JsonIgnore] public string ReportDirectoryPath => Expand(ReportDirectory);
 
@@ -67,6 +70,8 @@ public sealed class AppConfig
         _ = ForgottenTimerWarning;
         if (StaleTaskDays < 0)
             throw new ConfigException("staleTaskDays は 0 以上にしてください（0 なら保留を使わない）。");
+        if (ArchiveAfterDays < 1)
+            throw new ConfigException("archiveAfterDays は 1 以上にしてください。");
     }
 
     private static void CheckDirectory(string path, string name)
@@ -105,23 +110,53 @@ public sealed class TaskStore(string dataDirectory)
     public string DataPath => Path.Combine(dataDirectory, "tasks.json");
     public string BackupDirectory => Path.Combine(dataDirectory, "backup");
 
-    public TaskData Load()
+    /// <summary>古い完了タスクを移しておくフォルダ（<see cref="TaskArchive"/>）。</summary>
+    public string ArchiveDirectory => Path.Combine(dataDirectory, "archive");
+
+    public TaskData Load() => LoadFile(DataPath);
+
+    /// <summary>tasks.json と同じ形のファイルを読む。なければ空のデータ。</summary>
+    private static TaskData LoadFile(string path)
     {
-        if (!File.Exists(DataPath)) return new TaskData();
+        var name = Path.GetFileName(path);
+        if (!File.Exists(path)) return new TaskData();
         try
         {
-            var data = JsonSerializer.Deserialize(File.ReadAllText(DataPath), Json.Context.TaskData)
-                ?? throw new DataLoadException("tasks.json が空です。");
+            var data = JsonSerializer.Deserialize(File.ReadAllText(path), Json.Context.TaskData)
+                ?? throw new DataLoadException($"{name} が空です。");
             if (data.SchemaVersion > TaskData.CurrentSchemaVersion)
-                throw new DataLoadException($"tasks.json のバージョン({data.SchemaVersion})にこのアプリは対応していません。");
+                throw new DataLoadException($"{name} のバージョン({data.SchemaVersion})にこのアプリは対応していません。");
             Migrate(data);
             return data;
         }
         catch (JsonException ex)
         {
-            throw new DataLoadException($"tasks.json を読めません: {ex.Message}", ex);
+            throw new DataLoadException($"{name} を読めません: {ex.Message}", ex);
         }
     }
+
+    // ---------- アーカイブ（archive\tasks-YYYY.json。tasks.json と同じ形で、days は空） ----------
+
+    public string ArchivePath(int year) =>
+        Path.Combine(ArchiveDirectory, $"tasks-{year.ToString("0000", CultureInfo.InvariantCulture)}.json");
+
+    /// <summary>アーカイブのある年（古い順）。</summary>
+    public IReadOnlyList<int> ArchiveYears()
+    {
+        if (!Directory.Exists(ArchiveDirectory)) return [];
+        return Directory.GetFiles(ArchiveDirectory, "tasks-*.json")
+            .Select(f => Path.GetFileNameWithoutExtension(f)["tasks-".Length..])
+            .Select(y => int.TryParse(y, NumberStyles.None, CultureInfo.InvariantCulture, out var n) && y.Length == 4 ? n : (int?)null)
+            .OfType<int>()
+            .Order()
+            .ToList();
+    }
+
+    /// <summary>その年のアーカイブを読む。なければ空。</summary>
+    public TaskData LoadArchive(int year) => LoadFile(ArchivePath(year));
+
+    public void SaveArchive(int year, TaskData data) =>
+        AtomicFile.WriteAllText(ArchivePath(year), Json.Serialize(data, Json.Context.TaskData));
 
     /// <summary>古い形のデータを今の形に直す。ファイルには次に保存したときに書かれる。</summary>
     private static void Migrate(TaskData data)

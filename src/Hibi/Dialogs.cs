@@ -468,9 +468,10 @@ internal static class Dialogs
         var boundaryText = current.DayBoundary;
         var hoursText = current.ForgottenTimerWarningHours.ToString(CultureInfo.InvariantCulture);
         var staleText = current.StaleTaskDays.ToString(CultureInfo.InvariantCulture);
+        var archiveText = current.ArchiveAfterDays.ToString(CultureInfo.InvariantCulture);
         while (true)
         {
-            using var d = new Dialog { Title = "設定", Width = Dim.Percent(80), Height = 21 };
+            using var d = new Dialog { Title = "設定", Width = Dim.Percent(80), Height = 24 };
             const int x = 22;
             TextField Field(int y, string label, string text, Dim width, string hint)
             {
@@ -486,12 +487,13 @@ internal static class Dialogs
             var boundaryField = Field(6, "日の切り替わり", boundaryText, 6, "HH:mm（例: 04:00）。この時刻より前は前の業務日");
             var hoursField = Field(9, "止め忘れの警告", hoursText, 6, "時間（起動したとき、これより長く動いていたら確認する）");
             var staleField = Field(12, "自動で保留", staleText, 6, "業務日（これだけ触っていない未完了タスク。0: 使わない）");
+            var archiveField = Field(15, "アーカイブ", archiveText, 6, "日（完了してこれだけ触っていないタスクを Shift+X で移す。1 以上）");
             d.Add(
-                new Label { X = 1, Y = 15, Width = Dim.Fill(1), Text = $"保存先: {configPath}　%APPDATA% などの環境変数も使える" },
+                new Label { X = 1, Y = 18, Width = Dim.Fill(1), Text = $"保存先: {configPath}　%APPDATA% などの環境変数も使える" },
                 new Label { X = 1, Y = Pos.AnchorEnd(1), Text = "Enter/Ctrl+S: 保存  Tab: 次の欄  Esc: キャンセル" });
             dataField.SetFocus();
 
-            if (Show(app, d, ["保存", Cancel], dataField, reportField, boundaryField, hoursField, staleField) != 0)
+            if (Show(app, d, ["保存", Cancel], dataField, reportField, boundaryField, hoursField, staleField, archiveField) != 0)
                 return null;
 
             dataText = dataField.Text.Trim();
@@ -499,6 +501,7 @@ internal static class Dialogs
             boundaryText = boundaryField.Text.Trim();
             hoursText = hoursField.Text.Trim();
             staleText = staleField.Text.Trim();
+            archiveText = archiveField.Text.Trim();
 
             if (!double.TryParse(hoursText, NumberStyles.Float, CultureInfo.InvariantCulture, out var hours))
             {
@@ -508,6 +511,11 @@ internal static class Dialogs
             if (!int.TryParse(staleText, NumberStyles.Integer, CultureInfo.InvariantCulture, out var stale))
             {
                 Error(app, "自動で保留は日数を整数で入力してください（0 なら使わない）。");
+                continue;
+            }
+            if (!int.TryParse(archiveText, NumberStyles.Integer, CultureInfo.InvariantCulture, out var archiveDays))
+            {
+                Error(app, "アーカイブは日数を整数で入力してください（1 以上）。");
                 continue;
             }
             // 「4:00」も「04:00」として受け付ける
@@ -520,6 +528,7 @@ internal static class Dialogs
             edited.DayBoundary = boundaryText;
             edited.ForgottenTimerWarningHours = hours;
             edited.StaleTaskDays = stale;
+            edited.ArchiveAfterDays = archiveDays;
             try
             {
                 edited.Validate();
@@ -614,7 +623,11 @@ internal static class Dialogs
     // ---------- 日報の出力: 明日の予定とふり返り（F-R-02〜04, F-R-08） ----------
 
     /// <summary>明日の予定を選び、ふり返り（課題・学び・所感）を見直す。キャンセルなら null。</summary>
-    public static ReportInput? PrepareReport(IApplication app, TaskService service, DateOnly day)
+    /// <summary>
+    /// 日報を出す前のダイアログ。<paramref name="view"/> は「その日の作業」を出すのに使う
+    /// （古い日ならアーカイブを読み足したもの。<see cref="TaskArchive.ViewFrom"/>）。変えるのは <paramref name="service"/> だけ。
+    /// </summary>
+    public static ReportInput? PrepareReport(IApplication app, TaskService service, TaskService view, DateOnly day)
     {
         var tasks = service.OpenTasks().ToList();
         var worked = new List<TaskItem>();
@@ -681,16 +694,16 @@ internal static class Dialogs
         {
             var selected = workedList.Value;
             worked.Clear();
-            worked.AddRange(service.CompletedOn(day).Concat(service.InProgressOn(day)));
+            worked.AddRange(view.CompletedOn(day).Concat(view.InProgressOn(day)));
             workedRows.Clear();
             foreach (var t in worked)
             {
                 var title = t.ProjectLabel is { } p ? $"{t.Title}  #{p}" : t.Title;
-                var done = t.CompletedAt is { } c && service.Calendar.DayOf(c) == day ? "完了 " : "";
-                var slots = ReportGenerator.TimeSlots(service.LogsIn(t, day, day));
-                workedRows.Add($"{done}{title} — {DurationFormat.Short(service.DurationOn(t, day))}{(slots.Length > 0 ? $"（{slots}）" : "")}");
+                var done = t.CompletedAt is { } c && view.Calendar.DayOf(c) == day ? "完了 " : "";
+                var slots = ReportGenerator.TimeSlots(view.LogsIn(t, day, day));
+                workedRows.Add($"{done}{title} — {DurationFormat.Short(view.DurationOn(t, day))}{(slots.Length > 0 ? $"（{slots}）" : "")}");
             }
-            workedLabel.Text = $"その日の作業（稼働合計 {DurationFormat.Short(service.TotalDurationOn(day))}）";
+            workedLabel.Text = $"その日の作業（稼働合計 {DurationFormat.Short(view.TotalDurationOn(day))}）";
             if (worked.Count > 0) workedList.Value = Math.Clamp(selected ?? 0, 0, worked.Count - 1);
             workedList.SetNeedsDraw();
         }
@@ -699,6 +712,11 @@ internal static class Dialogs
         {
             if (workedList.Value is not int i || i < 0 || i >= worked.Count) return;
             var t = worked[i];
+            if (service.Find(t.Id) is null)
+            {
+                Error(app, $"「{t.Title}」はアーカイブしたタスクなので、作業記録は直せません。");
+                return;
+            }
             if (EditWorkLogs(app, $"作業記録: {t.Title}（{BusinessDayCalendar.Key(day)} の分）", service.WholeLogsOn(t, day),
                     logs => service.ReplaceWorkLogsOn(t.Id, day, logs)))
                 ReloadWorked();

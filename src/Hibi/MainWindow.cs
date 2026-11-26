@@ -456,6 +456,7 @@ internal sealed class MainWindow : Window
             : key == Key.E ? EditTask
             : key == Key.T ? EditWorkLogs
             : key == Key.X ? DeleteTask
+            : key == Key.X.WithShift ? ArchiveOld
             : key == Key.N ? () => EditNote(_service.Today)
             : key == Key.N.WithShift ? () => WithPastDay("ふり返りを書く", EditNote)
             : key == Key.R ? () => OutputReport(_service.Today)
@@ -488,6 +489,7 @@ internal sealed class MainWindow : Window
           d              完了にする / 完了を取り消す
           t              作業記録を修正
           x              削除
+          Shift+X        古い完了タスクをアーカイブに移す（tasks.json を小さくする）
           p              保留にする / 保留から戻す
           + / -          優先度を1つ上げる / 下げる（低 ↔ 普通 ↔ 高）
 
@@ -777,14 +779,15 @@ internal sealed class MainWindow : Window
 
     private void OutputReport(DateOnly day)
     {
-        if (Dialogs.PrepareReport(_app, _service, day) is not { } input) return;
+        if (ReportView(day) is not { } view) return;
+        if (Dialogs.PrepareReport(_app, _service, view, day) is not { } input) return;
         var previous = _service.GetDay(day);
         var previousTomorrow = previous?.TomorrowTaskIds?.ToList();
         var previousNotes = _service.GetNotes(day);
         _service.SetTomorrow(day, input.Tomorrow);
         _service.SetNotes(day, input.Notes);
 
-        var markdown = ReportGenerator.Generate(_service, day);
+        var markdown = ReportGenerator.Generate(view, day);
         // ファイルに書けなくても、貼り付けには使えるように先にコピーしておく。
         var copied = CopyToClipboard(markdown);
         var copyNote = copied ? "クリップボードにもコピーしました" : "クリップボードにはコピーできませんでした";
@@ -822,7 +825,8 @@ internal sealed class MainWindow : Window
     {
         if (Dialogs.AskMonth(_app, "月報を出力", _service.Today) is not { } month) return;
 
-        var markdown = ReportGenerator.GenerateMonthly(_service, month);
+        if (ReportView(ReportPeriod.MonthOf(month).From) is not { } view) return;
+        var markdown = ReportGenerator.GenerateMonthly(view, month);
         try
         {
             var path = ReportWriter.WriteMonthly(_config.ReportDirectoryPath, month, markdown);
@@ -841,7 +845,8 @@ internal sealed class MainWindow : Window
             return;
 
         var week = ReportPeriod.WeekOf(day);
-        var markdown = ReportGenerator.GenerateWeekly(_service, day);
+        if (ReportView(week.From) is not { } view) return;
+        var markdown = ReportGenerator.GenerateWeekly(view, day);
         try
         {
             var path = ReportWriter.WriteWeekly(_config.ReportDirectoryPath, week, markdown);
@@ -851,6 +856,57 @@ internal sealed class MainWindow : Window
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
         {
             Dialogs.Error(_app, $"週報を保存できませんでした: {ex.Message}");
+        }
+    }
+
+    // ---------- アーカイブ ----------
+
+    /// <summary>
+    /// <paramref name="from"/> からの期間の報告に使うサービス。古い期間ならアーカイブを読み足す（<see cref="TaskArchive.ViewFrom"/>）。
+    /// アーカイブが読めなければ知らせて null（足りない内容で出力しないように）。
+    /// </summary>
+    private TaskService? ReportView(DateOnly from)
+    {
+        try
+        {
+            return TaskArchive.ViewFrom(_service, _store, from);
+        }
+        catch (Exception ex) when (ex is DataLoadException or IOException or UnauthorizedAccessException)
+        {
+            Dialogs.Error(_app, $"アーカイブを読めないので出力しません: {ex.Message}\n{_store.ArchiveDirectory}");
+            return null;
+        }
+    }
+
+    /// <summary>古い完了タスクをアーカイブに移す（<see cref="TaskArchive"/>）。件数を見せて確認し、先にバックアップを取る。</summary>
+    private void ArchiveOld()
+    {
+        var days = _config.ArchiveAfterDays;
+        var plan = TaskArchive.Plan(_service, days);
+        if (plan.Count == 0)
+        {
+            Dialogs.Info(_app, "アーカイブ",
+                $"移すものはありません。\n完了してから {days} 日以上触っていないタスクを移します（日数は c の設定で変えられます）。");
+            return;
+        }
+        var files = string.Join("\n", plan.Select(p => $"  {Path.GetFileName(_store.ArchivePath(p.Year))}  {p.Count} 件"));
+        var message =
+            $"完了してから {days} 日以上触っていないタスク {plan.Sum(p => p.Count)} 件を、\n" +
+            $"{_store.ArchiveDirectory} に移します。\n\n{files}\n\n" +
+            "一覧と、プロジェクト・作業分類の候補には出なくなります。\n" +
+            "過去の日報・週報・月報には今までどおり入ります。\n" +
+            "移す前に tasks.json のバックアップを取ります。";
+        if (!Dialogs.Confirm(_app, "古い完了タスクをアーカイブ", message, "移す")) return;
+
+        try
+        {
+            _store.Backup(_service.Now);
+            var moved = TaskArchive.Archive(_service, _store, days); // tasks.json は Changed で保存される
+            Dialogs.Info(_app, "アーカイブ", $"{moved} 件を移しました。\n{_store.ArchiveDirectory}");
+        }
+        catch (Exception ex) when (ex is DataLoadException or IOException or UnauthorizedAccessException)
+        {
+            Dialogs.Error(_app, $"アーカイブできませんでした（何も移していません）: {ex.Message}");
         }
     }
 
@@ -884,6 +940,7 @@ internal sealed class MainWindow : Window
         _config.DayBoundary = edited.DayBoundary;
         _config.ForgottenTimerWarningHours = edited.ForgottenTimerWarningHours;
         _config.StaleTaskDays = edited.StaleTaskDays;
+        _config.ArchiveAfterDays = edited.ArchiveAfterDays;
         if (edited.DayBoundaryTime != _service.Calendar.Boundary)
             _service.Calendar = new BusinessDayCalendar(edited.DayBoundaryTime);
     }

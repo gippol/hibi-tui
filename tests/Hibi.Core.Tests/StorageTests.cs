@@ -76,6 +76,7 @@ public sealed class StorageTests : IDisposable
         Assert.Equal(TimeSpan.FromHours(4), config.DayBoundaryTime);
         Assert.Contains("\"dayBoundary\": \"04:00\"", File.ReadAllText(path));
         Assert.Equal(14, config.StaleTaskDays);
+        Assert.Equal(90, config.ArchiveAfterDays);
         Assert.DoesNotContain("%", config.DataDirectoryPath);
     }
 
@@ -108,6 +109,7 @@ public sealed class StorageTests : IDisposable
         config.DayBoundary = "05:30";
         config.ForgottenTimerWarningHours = 1.5;
         config.StaleTaskDays = 0;
+        config.ArchiveAfterDays = 365;
 
         config.Save(path);
         var loaded = AppConfig.LoadOrCreate(path);
@@ -117,6 +119,7 @@ public sealed class StorageTests : IDisposable
         Assert.Equal(new TimeSpan(5, 30, 0), loaded.DayBoundaryTime);
         Assert.Equal(TimeSpan.FromMinutes(90), loaded.ForgottenTimerWarning);
         Assert.Equal(0, loaded.StaleTaskDays);
+        Assert.Equal(365, loaded.ArchiveAfterDays);
     }
 
     [Theory]
@@ -124,6 +127,7 @@ public sealed class StorageTests : IDisposable
     [InlineData("dayBoundary", "4時")]
     [InlineData("forgottenTimerWarningHours", "0")]
     [InlineData("staleTaskDays", "-1")]
+    [InlineData("archiveAfterDays", "0")]
     [InlineData("dataDirectory", "")]
     [InlineData("reportDirectory", "  ")]
     public void おかしな設定は保存しない(string name, string value)
@@ -136,6 +140,7 @@ public sealed class StorageTests : IDisposable
             case "dayBoundary": config.DayBoundary = value; break;
             case "forgottenTimerWarningHours": config.ForgottenTimerWarningHours = double.Parse(value); break;
             case "staleTaskDays": config.StaleTaskDays = int.Parse(value); break;
+            case "archiveAfterDays": config.ArchiveAfterDays = int.Parse(value); break;
             case "dataDirectory": config.DataDirectory = value; break;
             case "reportDirectory": config.ReportDirectory = value; break;
         }
