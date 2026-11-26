@@ -19,6 +19,9 @@ internal sealed class MainWindow : Window
     /// <summary>今日の作業がこれを超えたら、タイトル行にこっそり「おつかれさま」と出す（隠し機能。ヘルプには書かない）。</summary>
     private static readonly TimeSpan WellDoneAfter = TimeSpan.FromHours(8);
 
+    /// <summary>詳細欄の、メモより上の行数（タイトル〜累計の7行・空行・「メモ」の見出し）。</summary>
+    private const int DetailHeaderLines = 9;
+
     private const string FooterText = "?:ヘルプ  a:追加  Enter:開始/停止  d:完了  /:絞込  r:日報  ^O:日報を見る  q:終了";
 
     private readonly IApplication _app;
@@ -38,6 +41,8 @@ internal sealed class MainWindow : Window
     private readonly TextView _preview;
     private readonly ShortcutListView _list;
     private readonly Label _detail;
+    private readonly TextView _memo; // 詳細のメモ。長いと切れるので、一覧にいたまま Ctrl+↑↓ でスクロールする
+    private Guid? _memoTaskId; // _memo に出しているタスク。別のタスクを選んだら先頭に戻す
     private readonly Label _footer;
     private readonly Label _filterPrompt;
     private readonly TextField _filterField;
@@ -99,8 +104,18 @@ internal sealed class MainWindow : Window
             // 詳細は見るだけ。FrameView は既定でフォーカスを取り（TabGroup）、クリックで移ると矢印キーで一覧に戻れないので取らせない
             CanFocus = false,
         };
-        _detail = new Label { Width = Dim.Fill(), Height = Dim.Fill() };
-        detailFrame.Add(_detail);
+        _detail = new Label { Width = Dim.Fill(), Height = DetailHeaderLines };
+        // 毎秒書き直す時間の欄とは分けておく（同じ欄だと、書き直すたびにスクロールが先頭へ戻る）
+        _memo = new TextView
+        {
+            Y = DetailHeaderLines,
+            Width = Dim.Fill(),
+            Height = Dim.Fill(),
+            ReadOnly = true,
+            WordWrap = true,
+            CanFocus = false,
+        };
+        detailFrame.Add(_detail, _memo);
 
         // よく使うものだけ。全部は ? で出す（幅のせまい端末でも切れにくいように1行に収める）
         _footer = new Label
@@ -330,6 +345,7 @@ internal sealed class MainWindow : Window
         if (Selected is not { } t)
         {
             _detail.Text = "";
+            SetMemo(null, null);
             return;
         }
         var state = t.State switch
@@ -353,7 +369,34 @@ internal sealed class MainWindow : Window
             $"優先度: {Dialogs.PriorityLabel(t.Priority)}  期限: {due}\n" +
             $"最後に触った日: {BusinessDayCalendar.Key(last)}（{(ago <= 0 ? "今日" : $"{ago}日前")}）\n" +
             $"今日: {DurationFormat.Short(_service.DurationOn(t, _shownDay))} / 累計: {DurationFormat.Short(_service.TotalDuration(t))}\n" +
-            $"\nメモ:\n{t.Memo ?? "-"}";
+            $"\nメモ{MemoHint(t.Memo)}:";
+        SetMemo(t.Id, t.Memo ?? "-");
+    }
+
+    private static string MemoHint(string? memo) =>
+        MemoLinks.Extract(memo).Count > 0 ? "（Ctrl+↑↓: スクロール  l: リンクを開く）"
+        : memo is null ? ""
+        : "（Ctrl+↑↓: スクロール）";
+
+    /// <summary>メモの欄を書き直す。中身が同じなら触らない（スクロールを保つ）。別のタスクなら先頭から出す。</summary>
+    private void SetMemo(Guid? taskId, string? text)
+    {
+        var sameTask = taskId == _memoTaskId;
+        if (sameTask && _memo.Text == (text ?? "")) return;
+        var top = _memo.Viewport.Y;
+        _memoTaskId = taskId;
+        _memo.Text = text ?? "";
+        ScrollMemoTo(sameTask ? top : 0);
+    }
+
+    private void ScrollMemo(int delta) => ScrollMemoTo(_memo.Viewport.Y + delta);
+
+    private void ScrollMemoTo(int top)
+    {
+        top = Math.Clamp(top, 0, Math.Max(0, _memo.Lines - _memo.Viewport.Height));
+        _memo.InsertionPoint = new System.Drawing.Point(0, top);
+        _memo.ScrollTo(new System.Drawing.Point(0, top));
+        _memo.SetNeedsDraw();
     }
 
     // ---------- キー操作（要件 5.2） ----------
@@ -376,6 +419,19 @@ internal sealed class MainWindow : Window
         if (key == Key.CursorUp.WithShift || key == Key.CursorDown.WithShift)
         {
             Run(() => MoveSelected(key == Key.CursorUp.WithShift ? -1 : 1));
+            return true;
+        }
+
+        // 一覧にいたまま詳細のメモをスクロールする（Ctrl+PageUp/PageDown は1画面分）
+        int? memoDelta =
+            key == Key.CursorDown.WithCtrl ? 1
+            : key == Key.CursorUp.WithCtrl ? -1
+            : key == Key.PageDown.WithCtrl ? Math.Max(1, _memo.Viewport.Height - 1)
+            : key == Key.PageUp.WithCtrl ? -Math.Max(1, _memo.Viewport.Height - 1)
+            : null;
+        if (memoDelta is { } md)
+        {
+            if (_showDetail) ScrollMemo(md);
             return true;
         }
 
@@ -408,6 +464,7 @@ internal sealed class MainWindow : Window
             : key == Key.W ? OutputWeeklyReport
             : key == Key.H ? () => _showStale = !_showStale
             : key == Key.I ? ToggleDetail
+            : key == Key.L ? OpenLink
             : key == Key.P ? ToggleHold
             : key == Key.S ? GroupByProject
             : key == Key.C ? EditConfig
@@ -441,6 +498,8 @@ internal sealed class MainWindow : Window
           s              区切りごとにプロジェクト・作業分類でまとめる
           h              [保留] を開く / たたむ
           i              詳細欄を隠す / 出す（隠すと一覧が横いっぱいになる）
+          Ctrl+↑ / ↓     詳細欄のメモをスクロール（Ctrl+PageUp / PageDown で1画面分）
+          l              メモの中のリンク（URL・ファイル・フォルダ）を開く（開く前に確認する）
 
         [ふり返り・日報]
           n              今日のふり返りを書く
@@ -520,6 +579,30 @@ internal sealed class MainWindow : Window
         _preview.Visible = true;
         _footer.Text = "日報のプレビュー（まだ出力していません）  ↑↓: スクロール  Ctrl+O/Esc: 一覧に戻る";
         _preview.SetFocus();
+    }
+
+    /// <summary>
+    /// 選んでいるタスクのメモにあるリンクを開く。複数あれば選んでもらう。開く前に必ず行き先を見せて確認する
+    /// （<see cref="LinkOpener"/>）。
+    /// </summary>
+    private void OpenLink()
+    {
+        if (Selected is not { } t) return;
+        var links = MemoLinks.Extract(t.Memo);
+        if (links.Count == 0)
+        {
+            Dialogs.Info(_app, "リンクを開く",
+                """
+                メモにリンクがありません。
+                開けるのは https:// / http:// の URL と、C:\... や \\サーバー\共有\... のパスです
+                （空白を含むパスは "..." で囲みます）。
+                """);
+            return;
+        }
+        var link = links.Count == 1 ? links[0]
+            : Dialogs.Pick(_app, "開くリンクを選ぶ", links.Select(l => l.Text).ToList()) is int i ? links[i]
+            : null;
+        if (link is not null) LinkOpener.Open(_app, link);
     }
 
     /// <summary>詳細欄を隠す / 出す。せまい画面で一覧を広く使うため。</summary>

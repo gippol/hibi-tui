@@ -248,6 +248,10 @@ internal static class Dialogs
     /// 既存のプロジェクト（や作業分類）から1つ選ぶ。<paramref name="filter"/> を含むものだけ出す（該当なしなら全部）。
     /// キャンセルなら null。
     /// </summary>
+    /// <summary>一覧から1つ選んでもらい、その番号を返す（キャンセルなら null）。</summary>
+    public static int? Pick(IApplication app, string title, IReadOnlyList<string> items) =>
+        Choose(app, title, items, null) is { } chosen ? items.ToList().IndexOf(chosen) : null;
+
     private static string? Choose(IApplication app, string title, IReadOnlyList<string> names, string? filter)
     {
         var candidates = string.IsNullOrWhiteSpace(filter)
