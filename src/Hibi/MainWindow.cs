@@ -41,7 +41,7 @@ internal sealed class MainWindow : Window
     private readonly TextView _preview;
     private readonly ShortcutListView _list;
     private readonly Label _detail;
-    private readonly TextView _memo; // 詳細のメモ。長いと切れるので、一覧にいたまま Ctrl+↑↓ でスクロールする
+    private readonly MemoView _memo; // 詳細のメモ。長いと切れるので、一覧にいたまま Ctrl+↑↓ でスクロールする
     private Guid? _memoTaskId; // _memo に出しているタスク。別のタスクを選んだら先頭に戻す
     private readonly Label _footer;
     private readonly Label _filterPrompt;
@@ -106,14 +106,11 @@ internal sealed class MainWindow : Window
         };
         _detail = new Label { Width = Dim.Fill(), Height = DetailHeaderLines };
         // 毎秒書き直す時間の欄とは分けておく（同じ欄だと、書き直すたびにスクロールが先頭へ戻る）
-        _memo = new TextView
+        _memo = new MemoView
         {
             Y = DetailHeaderLines,
             Width = Dim.Fill(),
             Height = Dim.Fill(),
-            ReadOnly = true,
-            WordWrap = true,
-            CanFocus = false,
         };
         detailFrame.Add(_detail, _memo);
 
@@ -382,10 +379,10 @@ internal sealed class MainWindow : Window
     private void SetMemo(Guid? taskId, string? text)
     {
         var sameTask = taskId == _memoTaskId;
-        if (sameTask && _memo.Text == (text ?? "")) return;
+        if (sameTask && _memo.Source == (text ?? "")) return;
         var top = _memo.Viewport.Y;
         _memoTaskId = taskId;
-        _memo.Text = text ?? "";
+        _memo.SetMemo(text ?? "");
         ScrollMemoTo(sameTask ? top : 0);
     }
 
